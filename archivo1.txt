@@ -1,1 +1,2 @@
 esta es una frase fav
+Esta es mi tercer frase favorita editando el archivo1.txt
