@@ -1,7 +1,28 @@
+import os
+
 from flask import Flask
 
-def create_app():
-    app = Flask(__name__)
+from config import Config
+from app.extensions import db, migrate, login_manager, csrf
+
+
+def create_app(config_class=Config):
+    app = Flask(__name__, instance_relative_config=True)
+    app.config.from_object(config_class)
+
+    # Si no hay DATABASE_URL en el .env, usa SQLite en la carpeta instance/
+    os.makedirs(app.instance_path, exist_ok=True)
+    if not app.config.get("SQLALCHEMY_DATABASE_URI"):
+        app.config["SQLALCHEMY_DATABASE_URI"] = (
+            "sqlite:///" + os.path.join(app.instance_path, "inventario.db")
+        )
+
+    db.init_app(app)
+    migrate.init_app(app, db)
+    login_manager.init_app(app)
+    csrf.init_app(app)
+
+    from app import models  # noqa: F401  (registra los modelos)
 
     from app.main.routes import main
     app.register_blueprint(main)
