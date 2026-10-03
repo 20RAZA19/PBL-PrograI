@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Inventario{% endblock %} | Arte y Color</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="sidebar__logo">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Arte y Color">
+        </div>
+
+        {% set ep = request.endpoint %}
+        <nav class="sidebar__nav">
+            <a href="{{ url_for('main.dashboard') }}"
+               class="nav-link {% if ep == 'main.dashboard' %}active{% endif %}">
+                <i data-lucide="layout-dashboard"></i> Dashboard Principal
+            </a>
+            <a href="#" class="nav-link">
+                <i data-lucide="layers"></i> Materia Prima (Telas)
+            </a>
+            <a href="#" class="nav-link">
+                <i data-lucide="box"></i> Diseños Previos y Renders
+            </a>
+            <a href="#" class="nav-link">
+                <i data-lucide="history"></i> Histórico de Pedidos
+            </a>
+        </nav>
+
+        <div class="sidebar__user">
+            {% if current_user.is_authenticated %}
+                <div class="avatar">{{ current_user.nombre[:1] }}</div>
+                <div>
+                    <strong>{{ current_user.nombre }}</strong>
+                    <span>{{ current_user.cargo or current_user.rol }}</span>
+                </div>
+            {% else %}
+                <div class="avatar">?</div>
+                <div>
+                    <strong>Invitado</strong>
+                    <span>Sin sesión iniciada</span>
+                </div>
+            {% endif %}
+        </div>
+    </aside>
+
+    <main class="content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script>lucide.createIcons();</script>
+</body>
+</html>

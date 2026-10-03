@@ -5,6 +5,9 @@ from flask import Flask
 from config import Config
 from app.extensions import db, migrate, login_manager, csrf
 
+MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
+         "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+
 
 def create_app(config_class=Config):
     app = Flask(__name__, instance_relative_config=True)
@@ -18,7 +21,7 @@ def create_app(config_class=Config):
         )
 
     db.init_app(app)
-    migrate.init_app(app, db, render_as_batch=True) 
+    migrate.init_app(app, db, render_as_batch=True)
     login_manager.init_app(app)
     csrf.init_app(app)
 
@@ -26,5 +29,14 @@ def create_app(config_class=Config):
 
     from app.main.routes import main
     app.register_blueprint(main)
+
+    from app.commands import seed
+    app.cli.add_command(seed)
+
+    @app.template_filter("fecha_es")
+    def fecha_es(fecha):
+        if not fecha:
+            return "—"
+        return f"{fecha.day} {MESES[fecha.month - 1]} {fecha.year}"
 
     return app
