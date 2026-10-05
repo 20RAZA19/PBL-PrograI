@@ -16,13 +16,14 @@
             <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Arte y Color">
         </div>
 
-        {% set ep = request.endpoint %}
+        {% set ep = request.endpoint or "" %}
         <nav class="sidebar__nav">
             <a href="{{ url_for('main.dashboard') }}"
                class="nav-link {% if ep == 'main.dashboard' %}active{% endif %}">
                 <i data-lucide="layout-dashboard"></i> Dashboard Principal
             </a>
-            <a href="#" class="nav-link">
+            <a href="{{ url_for('telas.lista') }}"
+               class="nav-link {% if ep.startswith('telas.') %}active{% endif %}">
                 <i data-lucide="layers"></i> Materia Prima (Telas)
             </a>
             <a href="#" class="nav-link">
@@ -51,9 +52,28 @@
     </aside>
 
     <main class="content">
+        {% with mensajes = get_flashed_messages(with_categories=true) %}
+            {% if mensajes %}
+            <div class="flashes">
+                {% for categoria, mensaje in mensajes %}
+                    <div class="flash flash--{{ categoria }}">{{ mensaje }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        {% endwith %}
+
         {% block content %}{% endblock %}
     </main>
 
-    <script>lucide.createIcons();</script>
+    <script>
+        lucide.createIcons();
+
+        // Cierra los menús de acciones al hacer clic fuera de ellos
+        document.addEventListener("click", (e) => {
+            document.querySelectorAll("details.menu[open]").forEach((menu) => {
+                if (!menu.contains(e.target)) menu.removeAttribute("open");
+            });
+        });
+    </script>
 </body>
 </html>

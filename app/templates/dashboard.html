@@ -2,11 +2,6 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-{% set clases_estado = {
-    "Disponible": "badge--ok",
-    "Stock Bajo": "badge--warn",
-    "Crítico": "badge--danger"
-} %}
 
 <!-- Barra superior -->
 <div class="topbar">
@@ -16,7 +11,7 @@
                placeholder="Buscar tela o código Pantone...">
         {% if estado %}<input type="hidden" name="estado" value="{{ estado }}">{% endif %}
     </form>
-    <a href="#" class="btn btn--primary">
+    <a href="{{ url_for('telas.movimiento', tipo='entrada') }}" class="btn btn--primary">
         <i data-lucide="plus"></i> Registrar Entrada de Material
     </a>
 </div>
@@ -27,7 +22,7 @@
         <div class="kpi__head">Rollos de Tela Disponibles
             <span class="kpi__icon"><i data-lucide="archive"></i></span>
         </div>
-        <p class="kpi__valor">{{ "{:,.0f}".format(resumen.metros_totales) }} mts</p>
+        <p class="kpi__valor">{{ resumen.metros_totales | metros }} mts</p>
         <div class="kpi__pie"><span class="badge badge--ok">Estable</span> Metraje total registrado</div>
     </div>
 
@@ -81,40 +76,7 @@
         </form>
     </div>
 
-    <div class="tabla-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>Tela / Material</th>
-                    <th>Código Pantone</th>
-                    <th>Disponibilidad</th>
-                    <th>Estado</th>
-                    <th>Acc</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for tela in telas %}
-                <tr>
-                    <td>
-                        <div class="tela">
-                            <span class="muestra" style="background: {{ tela.color_hex }}"></span>
-                            <div>
-                                <strong>{{ tela.nombre }}</strong>
-                                <span>{{ tela.tipo }}</span>
-                            </div>
-                        </div>
-                    </td>
-                    <td><span class="chip">{{ tela.codigo_pantone or "—" }}</span></td>
-                    <td><strong>{{ "{:,.0f}".format(tela.metros_disponibles) }} mts</strong></td>
-                    <td><span class="badge {{ clases_estado[tela.estado] }}">{{ tela.estado }}</span></td>
-                    <td><button class="btn-icono" type="button"><i data-lucide="more-vertical"></i></button></td>
-                </tr>
-                {% else %}
-                <tr><td colspan="5" class="vacio">No se encontraron telas.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+    {% include "telas/_tabla.html" %}
 </section>
 
 <!-- Diseño destacado -->
@@ -155,7 +117,7 @@
                     <dt>Telas Requeridas</dt>
                     <dd>
                         {% for dt in diseno.telas %}
-                            {{ dt.tela.nombre }} ({{ dt.metros_por_unidad }} mts/u){% if not loop.last %}, {% endif %}
+                            {{ dt.tela.nombre }} ({{ "%g"|format(dt.metros_por_unidad|float) }} mts/u){% if not loop.last %}, {% endif %}
                         {% endfor %}
                     </dd>
                 </div>

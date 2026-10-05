@@ -1,0 +1,58 @@
+{% set clases_estado = {
+    "Disponible": "badge--ok",
+    "Stock Bajo": "badge--warn",
+    "Crítico": "badge--danger"
+} %}
+
+<div class="tabla-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>Tela / Material</th>
+                <th>Código Pantone</th>
+                <th>Disponibilidad</th>
+                <th>Estado</th>
+                <th>Acc</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for tela in telas %}
+            <tr>
+                <td>
+                    <a class="tela" href="{{ url_for('telas.detalle', tela_id=tela.id) }}">
+                        <span class="muestra" style="background: {{ tela.color_hex }}"></span>
+                        <div>
+                            <strong>{{ tela.nombre }}</strong>
+                            <span>{{ tela.tipo }}</span>
+                        </div>
+                    </a>
+                </td>
+                <td><span class="chip">{{ tela.codigo_pantone or "—" }}</span></td>
+                <td><strong>{{ tela.metros_disponibles | metros }} mts</strong></td>
+                <td><span class="badge {{ clases_estado[tela.estado] }}">{{ tela.estado }}</span></td>
+                <td>
+                    <details class="menu">
+                        <summary class="btn-icono"><i data-lucide="more-vertical"></i></summary>
+                        <div class="menu__lista">
+                            <a href="{{ url_for('telas.detalle', tela_id=tela.id) }}">
+                                <i data-lucide="eye"></i> Ver detalle
+                            </a>
+                            <a href="{{ url_for('telas.movimiento', tela_id=tela.id, tipo='entrada') }}">
+                                <i data-lucide="arrow-down-to-line"></i> Registrar entrada
+                            </a>
+                            <a href="{{ url_for('telas.movimiento', tela_id=tela.id, tipo='salida') }}">
+                                <i data-lucide="arrow-up-from-line"></i> Registrar salida
+                            </a>
+                            <a href="{{ url_for('telas.editar', tela_id=tela.id) }}">
+                                <i data-lucide="pencil"></i> Editar
+                            </a>
+                        </div>
+                    </details>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="vacio">No se encontraron telas.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

@@ -30,6 +30,9 @@ def create_app(config_class=Config):
     from app.main.routes import main
     app.register_blueprint(main)
 
+    from app.telas.routes import telas
+    app.register_blueprint(telas, url_prefix="/telas")
+
     from app.commands import seed
     app.cli.add_command(seed)
 
@@ -38,5 +41,9 @@ def create_app(config_class=Config):
         if not fecha:
             return "—"
         return f"{fecha.day} {MESES[fecha.month - 1]} {fecha.year}"
-
+    
+    @app.template_filter("metros")
+    def formato_metros(valor):
+        valor = float(valor or 0)
+        return f"{valor:,.0f}" if valor.is_integer() else f"{valor:,.2f}"
     return app

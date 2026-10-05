@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}{{ tela.nombre }}{% endblock %}
+
+{% block content %}
+{% set clases_estado = {
+    "Disponible": "badge--ok",
+    "Stock Bajo": "badge--warn",
+    "Crítico": "badge--danger"
+} %}
+
+<div class="page-head">
+    <div>
+        <a href="{{ url_for('telas.lista') }}" class="volver"><i data-lucide="arrow-left"></i> Materia Prima</a>
+        <div class="detalle-head">
+            <span class="muestra muestra--grande" style="background: {{ tela.color_hex }}"></span>
+            <div>
+                <h1>{{ tela.nombre }}</h1>
+                <p>
+                    {{ tela.tipo }} · {{ tela.codigo_pantone or "Sin código Pantone" }}
+                    {% if not tela.activo %} · <strong>Desactivada</strong>{% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+    {% if tela.activo %}
+    <div class="page-head__acciones">
+        <a href="{{ url_for('telas.movimiento', tela_id=tela.id, tipo='entrada') }}" class="btn btn--primary">
+            <i data-lucide="arrow-down-to-line"></i> Entrada
+        </a>
+        <a href="{{ url_for('telas.movimiento', tela_id=tela.id, tipo='salida') }}" class="btn btn--outline">
+            <i data-lucide="arrow-up-from-line"></i> Salida
+        </a>
+        <a href="{{ url_for('telas.editar', tela_id=tela.id) }}" class="btn btn--outline">
+            <i data-lucide="pencil"></i> Editar
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<section class="info-grid">
+    <div class="info">
+        <span>Metros disponibles</span>
+        <strong>{{ tela.metros_disponibles | metros }} mts</strong>
+    </div>
+    <div class="info">
+        <span>Stock mínimo</span>
+        <strong>{{ tela.stock_minimo | metros }} mts</strong>
+    </div>
+    <div class="info">
+        <span>Estado</span>
+        <strong><span class="badge {{ clases_estado[tela.estado] }}">{{ tela.estado }}</span></strong>
+    </div>
+    <div class="info">
+        <span>Última actualización</span>
+        <strong>{{ tela.actualizado_en | fecha_es }}</strong>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel__head">
+        <div>
+            <h2>Historial de Movimientos</h2>
+            <p>Entradas y salidas registradas de esta tela</p>
+        </div>
+    </div>
+    <div class="tabla-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Tipo</th>
+                    <th>Metros</th>
+                    <th>Motivo</th>
+                    <th>Registrado por</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in movimientos %}
+                <tr>
+                    <td>{{ m.fecha | fecha_es }} · {{ m.fecha.strftime("%H:%M") }}</td>
+                    <td>
+                        <span class="badge {{ 'badge--ok' if m.tipo == 'entrada' else 'badge--warn' }}">
+                            {{ m.tipo | capitalize }}
+                        </span>
+                    </td>
+                    <td class="{{ 'positivo' if m.tipo == 'entrada' else 'negativo' }}">
+                        {{ "+" if m.tipo == "entrada" else "−" }}{{ m.metros | metros }} mts
+                    </td>
+                    <td>{{ m.motivo or "—" }}</td>
+                    <td>{{ m.usuario.nombre }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="vacio">Esta tela aún no tiene movimientos.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+{% if tela.activo %}
+<form method="post" action="{{ url_for('telas.desactivar', tela_id=tela.id) }}"
+      onsubmit="return confirm('¿Desactivar esta tela? Dejará de aparecer en el inventario, pero su historial se conserva.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn--danger"><i data-lucide="ban"></i> Desactivar tela</button>
+</form>
+{% endif %}
+{% endblock %}
