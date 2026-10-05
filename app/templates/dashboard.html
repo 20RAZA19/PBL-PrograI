@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+
+<!-- Barra superior -->
+<div class="topbar">
+    <form class="search" method="get">
+        <i data-lucide="search"></i>
+        <input type="text" name="q" value="{{ q }}"
+               placeholder="Buscar tela o código Pantone...">
+        {% if estado %}<input type="hidden" name="estado" value="{{ estado }}">{% endif %}
+    </form>
+    <a href="{{ url_for('telas.movimiento', tipo='entrada') }}" class="btn btn--primary">
+        <i data-lucide="plus"></i> Registrar Entrada de Material
+    </a>
+</div>
+
+<!-- Tarjetas de resumen -->
+<section class="kpis">
+    <div class="kpi">
+        <div class="kpi__head">Rollos de Tela Disponibles
+            <span class="kpi__icon"><i data-lucide="archive"></i></span>
+        </div>
+        <p class="kpi__valor">{{ resumen.metros_totales | metros }} mts</p>
+        <div class="kpi__pie"><span class="badge badge--ok">Estable</span> Metraje total registrado</div>
+    </div>
+
+    <div class="kpi">
+        <div class="kpi__head">Telas con Stock Bajo
+            <span class="kpi__icon"><i data-lucide="triangle-alert"></i></span>
+        </div>
+        <p class="kpi__valor">{{ resumen.telas_bajo_stock }} Variedades</p>
+        <div class="kpi__pie">
+            {% if resumen.telas_bajo_stock %}
+                <span class="badge badge--warn">Alerta</span> Requieren reabastecimiento
+            {% else %}
+                <span class="badge badge--ok">Al día</span> Sin faltantes
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="kpi">
+        <div class="kpi__head">Proyectos en Producción
+            <span class="kpi__icon"><i data-lucide="refresh-cw"></i></span>
+        </div>
+        <p class="kpi__valor">{{ resumen.pedidos_produccion }} Órdenes</p>
+        <div class="kpi__pie"><span class="badge badge--info">En Curso</span> Activas en taller</div>
+    </div>
+
+    <div class="kpi">
+        <div class="kpi__head">Diseños Archivados
+            <span class="kpi__icon"><i data-lucide="box"></i></span>
+        </div>
+        <p class="kpi__valor">{{ resumen.total_disenos }} Modelos</p>
+        <div class="kpi__pie"><span class="badge badge--ok">Catálogo</span> Diseños de uniformes</div>
+    </div>
+</section>
+
+<!-- Tabla de materia prima -->
+<section class="panel">
+    <div class="panel__head">
+        <div>
+            <h2>Materia Prima Registrada</h2>
+            <p>Control y metraje en tiempo real de telas e hilos disponibles</p>
+        </div>
+        <form method="get" class="filtro">
+            <i data-lucide="filter"></i>
+            {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+            <select name="estado" onchange="this.form.submit()">
+                <option value="">Todos los estados</option>
+                {% for e in ["Disponible", "Stock Bajo", "Crítico"] %}
+                    <option value="{{ e }}" {% if estado == e %}selected{% endif %}>{{ e }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+
+    {% include "telas/_tabla.html" %}
+</section>
+
+<!-- Diseño destacado -->
+<section class="panel">
+    <div class="panel__head">
+        <div>
+            <h2>Diseños Previos</h2>
+            <p>Vista previa y ficha técnica del diseño en producción</p>
+        </div>
+    </div>
+
+    {% if pedido %}
+    {% set diseno = pedido.diseno %}
+    <div class="ficha-layout">
+        <div class="visor">
+            <div class="visor__img">
+                {% if diseno.imagen %}
+                    <img src="{{ url_for('static', filename=diseno.imagen) }}" alt="{{ diseno.nombre }}">
+                {% else %}
+                    <p class="vacio">Sin imagen</p>
+                {% endif %}
+            </div>
+            <div class="colores">
+                {% for dt in diseno.telas %}
+                    <span title="{{ dt.tela.nombre }}" style="background: {{ dt.tela.color_hex }}"></span>
+                {% endfor %}
+            </div>
+        </div>
+
+        <aside class="ficha">
+            <p class="ficha__titulo">Ficha Técnica del Diseño</p>
+            <h3>{{ diseno.nombre }}</h3>
+            <dl>
+                <div class="ficha__fila"><dt>Cliente</dt><dd>{{ pedido.cliente.nombre }}</dd></div>
+                <div class="ficha__fila"><dt>Tipo</dt><dd>{{ diseno.tipo_prenda or "—" }}</dd></div>
+                <div class="ficha__fila"><dt>Tallas</dt><dd>{{ diseno.tallas or "—" }}</dd></div>
+                <div class="ficha__bloque">
+                    <dt>Telas Requeridas</dt>
+                    <dd>
+                        {% for dt in diseno.telas %}
+                            {{ dt.tela.nombre }} ({{ "%g"|format(dt.metros_por_unidad|float) }} mts/u){% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    </dd>
+                </div>
+                <div class="ficha__fila"><dt>Cantidad Pedida</dt><dd>{{ pedido.cantidad }} unidades</dd></div>
+                <div class="ficha__fila"><dt>Estado</dt><dd><span class="badge badge--info">{{ pedido.estado }}</span></dd></div>
+                <div class="ficha__fila"><dt>Fecha Entrega</dt><dd>{{ pedido.fecha_entrega | fecha_es }}</dd></div>
+            </dl>
+            <div class="ficha__acciones">
+                <a href="#" class="btn btn--primary">Ver Diseño</a>
+                <a href="#" class="btn btn--outline">Exportar Especificaciones</a>
+            </div>
+        </aside>
+    </div>
+    {% else %}
+        <p class="vacio">No hay pedidos en producción.</p>
+    {% endif %}
+</section>
+{% endblock %}

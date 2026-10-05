@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo %}
+{% block title %}Registrar Movimiento{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <a href="{{ url_for('telas.lista') }}" class="volver"><i data-lucide="arrow-left"></i> Materia Prima</a>
+        <h1>Registrar Movimiento de Material</h1>
+        <p>Entradas por compras o devoluciones, salidas por consumo en producción</p>
+    </div>
+</div>
+
+<section class="panel panel--form">
+    {% if form.tela_id.choices %}
+    <form method="post" class="form" novalidate>
+        {{ form.hidden_tag() }}
+        <div class="form__grid">
+            {{ campo(form.tela_id, "campo--full") }}
+            {{ campo(form.tipo) }}
+            {{ campo(form.metros, placeholder="Ej. 50") }}
+            {{ campo(form.motivo, "campo--full", placeholder="Ej. Compra a proveedor, consumo del pedido #12") }}
+        </div>
+        <div class="form__acciones">
+            <a href="{{ url_for('telas.lista') }}" class="btn btn--outline">Cancelar</a>
+            <button type="submit" class="btn btn--primary">Registrar</button>
+        </div>
+    </form>
+    {% else %}
+        <p class="vacio">
+            No hay telas activas.
+            <a href="{{ url_for('telas.nueva') }}">Registra una tela primero.</a>
+        </p>
+    {% endif %}
+</section>
+{% endblock %}

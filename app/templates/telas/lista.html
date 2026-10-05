@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Materia Prima{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Materia Prima (Telas)</h1>
+        <p>Telas e hilos registrados en el inventario</p>
+    </div>
+    <div class="page-head__acciones">
+        <a href="{{ url_for('telas.movimiento') }}" class="btn btn--outline">
+            <i data-lucide="arrow-left-right"></i> Registrar Movimiento
+        </a>
+        <a href="{{ url_for('telas.nueva') }}" class="btn btn--primary">
+            <i data-lucide="plus"></i> Nueva Tela
+        </a>
+    </div>
+</div>
+
+<section class="panel">
+    <div class="panel__head">
+        <form class="search" method="get">
+            <i data-lucide="search"></i>
+            <input type="text" name="q" value="{{ q }}" placeholder="Buscar tela o código Pantone...">
+            {% if estado %}<input type="hidden" name="estado" value="{{ estado }}">{% endif %}
+        </form>
+        <form method="get" class="filtro">
+            <i data-lucide="filter"></i>
+            {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+            <select name="estado" onchange="this.form.submit()">
+                <option value="">Todos los estados</option>
+                {% for e in ["Disponible", "Stock Bajo", "Crítico"] %}
+                    <option value="{{ e }}" {% if estado == e %}selected{% endif %}>{{ e }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+
+    {% include "telas/_tabla.html" %}
+</section>
+{% endblock %}

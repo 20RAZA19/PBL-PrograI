@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <a href="{{ volver }}" class="volver"><i data-lucide="arrow-left"></i> Volver</a>
+        <h1>{{ titulo }}</h1>
+    </div>
+</div>
+
+<section class="panel panel--form">
+    <form method="post" class="form" novalidate>
+        {{ form.hidden_tag() }}
+        <div class="form__grid">
+            {{ campo(form.nombre, "campo--full", placeholder="Ej. Algodón Pima Verde Gras") }}
+            {{ campo(form.tipo) }}
+            {{ campo(form.codigo_pantone, placeholder="Ej. Pantone 348 C") }}
+            {{ campo(form.color_hex, type="color") }}
+            {{ campo(form.stock_minimo) }}
+            {% if "metros_iniciales" in form %}
+                {{ campo(form.metros_iniciales) }}
+            {% endif %}
+        </div>
+        <div class="form__acciones">
+            <a href="{{ volver }}" class="btn btn--outline">Cancelar</a>
+            <button type="submit" class="btn btn--primary">Guardar</button>
+        </div>
+    </form>
+</section>
+{% endblock %}
