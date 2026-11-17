@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge_pedido, boton_accion %}
+{% block title %}{{ diseno.nombre }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('catalogo.lista') }}" class="volver"><i data-lucide="arrow-left"></i> Catálogo de Diseños</a>
+
+<div class="page-head">
+    <div>
+        <h1>{{ diseno.nombre }}</h1>
+        <p>{{ diseno.tipo_prenda or "Prenda" }}{% if diseno.cliente %} · {{ diseno.cliente.nombre }}{% endif %}</p>
+    </div>
+    <div class="page-head__acciones">
+        <button type="button" class="btn btn--outline" onclick="window.print()"><i data-lucide="printer"></i> Exportar Especificaciones</button>
+        {% if current_user.puede_editar_disenos %}
+        <a href="{{ url_for('catalogo.editar', diseno_id=diseno.id) }}" class="btn btn--outline"><i data-lucide="pencil"></i> Editar</a>
+        {% endif %}
+        {% if current_user.puede_cotizar %}
+        <a href="{{ url_for('cotizaciones.nueva', diseno_id=diseno.id, cantidad=cantidad) }}" class="btn btn--primary"><i data-lucide="file-plus"></i> Cotizar</a>
+        {% endif %}
+    </div>
+</div>
+
+<section class="panel">
+    <div class="ficha-layout">
+        <div class="visor">
+            <div class="visor__img">
+                {% if diseno.imagen %}
+                    <img src="{{ url_for('static', filename=diseno.imagen) }}" alt="{{ diseno.nombre }}">
+                {% else %}
+                    <i data-lucide="shirt" style="width: 72px; height: 72px; color: var(--c-asparagus);"></i>
+                {% endif %}
+            </div>
+            <div class="colores">
+                {% for dt in diseno.telas %}
+                    <span title="{{ dt.tela.nombre }}" style="background: {{ dt.tela.color_hex }}"></span>
+                {% endfor %}
+            </div>
+        </div>
+
+        <aside class="ficha">
+            <p class="ficha__titulo">Ficha Técnica del Diseño</p>
+            <h3>{{ diseno.nombre }}</h3>
+            <dl>
+                <div class="ficha__fila"><dt>Cliente</dt><dd>{{ diseno.cliente.nombre if diseno.cliente else "—" }}</dd></div>
+                <div class="ficha__fila"><dt>Tipo</dt><dd>{{ diseno.tipo_prenda or "—" }}</dd></div>
+                <div class="ficha__fila"><dt>Tallas</dt><dd>{{ diseno.tallas or "—" }}</dd></div>
+                <div class="ficha__fila"><dt>Tela por prenda</dt><dd>{{ "%g"|format(diseno.metros_por_prenda) }} mts</dd></div>
+                <div class="ficha__bloque">
+                    <dt>Materiales por prenda</dt>
+                    <dd>
+                        {% for dt in diseno.telas %}
+                            {{ dt.tela.nombre }} ({{ "%g"|format(dt.metros_por_unidad|float) }} {{ dt.tela.unidad_medida | unidad_corta }}){% if not loop.last %}, {% endif %}
+                        {% else %}—{% endfor %}
+                    </dd>
+                </div>
+                {% if diseno.tiene_precio %}
+                <div class="ficha__fila"><dt>Precio por prenda</dt><dd>{{ diseno.precio_venta | dinero }}</dd></div>
+                {% endif %}
+                <div class="ficha__fila"><dt>Registrado</dt><dd>{{ diseno.creado_en | fecha_es }}</dd></div>
+            </dl>
+        </aside>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel__head">
+        <div>
+            <h2>Calculadora de Consumo</h2>
+            <p>Material necesario para producir una cantidad de prendas</p>
+        </div>
+        <form method="get" class="filtro">
+            <i data-lucide="calculator"></i>
+            <label for="cantidad" class="sr-only">Cantidad de prendas</label>
+            <input id="cantidad" type="number" name="cantidad" min="1" max="100000" value="{{ cantidad }}"
+                   style="border: 0; outline: 0; background: transparent; font: inherit; width: 90px; padding: 12px 0; color: var(--text-main);">
+            <span class="muted small">prendas</span>
+            <button class="btn btn--primary btn--sm" type="submit">Calcular</button>
+        </form>
+    </div>
+    <div class="tabla-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Insumo</th>
+                    <th>Por prenda</th>
+                    <th>Total requerido</th>
+                    {% if current_user.es_staff %}<th>Disponible</th><th>Cobertura</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in consumo %}
+                <tr>
+                    <td>
+                        <div class="tela">
+                            <span class="muestra" style="background: {{ c.tela.color_hex }}"></span>
+                            <div><strong>{{ c.tela.nombre }}</strong><span class="muted small">{{ c.tela.codigo_pantone or "" }}</span></div>
+                        </div>
+                    </td>
+                    {% set u = c.tela.unidad_medida | unidad_corta %}
+                    <td>{{ "%g"|format(c.por_unidad) }} {{ u }}</td>
+                    <td><strong>{{ c.requeridos | metros }} {{ u }}</strong></td>
+                    {% if current_user.es_staff %}
+                    <td>{{ c.disponibles | metros }} {{ u }}</td>
+                    <td>
+                        {% if c.alcanza %}<span class="badge badge--ok">Suficiente</span>
+                        {% else %}<span class="badge badge--danger">Faltan {{ (c.requeridos - c.disponibles) | metros }} {{ u }}</span>{% endif %}
+                    </td>
+                    {% endif %}
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="vacio">Este diseño no tiene telas asociadas.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+{% if current_user.puede_ver_costos %}
+<section class="panel">
+    <div class="panel__head">
+        <div>
+            <h2>Costo por Prenda</h2>
+            <p>Solo visible para Administración y Ventas</p>
+        </div>
+        {% if diseno.margen_pct is not none %}
+        <span class="badge {{ 'badge--danger' if diseno.margen_pct < 15 else ('badge--warn' if diseno.margen_pct < 25 else 'badge--ok') }}">Margen {{ diseno.margen_pct }}%</span>
+        {% endif %}
+    </div>
+    <div class="tabla-wrap">
+        <table class="tabla-compacta">
+            <thead><tr><th>Insumo</th><th class="num">Por prenda</th><th class="num">Costo unitario</th><th class="num">Subtotal</th></tr></thead>
+            <tbody>
+                {% for f in diseno.desglose_costos %}
+                <tr>
+                    <td><span class="tela"><span class="muestra" style="background: {{ f.insumo.color_hex }}"></span>{{ f.insumo.nombre }}</span></td>
+                    <td class="num">{{ f.cantidad | metros }} {{ f.insumo.unidad_medida | unidad_corta }}</td>
+                    <td class="num">{% if f.insumo.tiene_costo %}{{ f.costo_unitario | dinero }}{% else %}<span class="badge badge--warn">sin costo</span>{% endif %}</td>
+                    <td class="num">{{ f.subtotal | dinero }}</td>
+                </tr>
+                {% endfor %}
+                <tr><td colspan="3" class="num">Mano de obra</td><td class="num">{{ diseno.costo_mano_obra | dinero }}</td></tr>
+                <tr><td colspan="3" class="num"><strong>Costo total por prenda</strong></td><td class="num"><strong>{{ diseno.costo_por_prenda | dinero }}</strong></td></tr>
+                <tr><td colspan="3" class="num">Precio de venta</td><td class="num">{{ diseno.precio_venta | dinero if diseno.tiene_precio else "—" }}</td></tr>
+                <tr><td colspan="3" class="num"><strong>Ganancia por prenda</strong></td>
+                    <td class="num"><strong class="{{ 'negativo' if diseno.margen_unitario is not none and diseno.margen_unitario < 0 else 'positivo' }}">{{ diseno.margen_unitario | dinero if diseno.margen_unitario is not none else "—" }}</strong></td></tr>
+                <tr><td colspan="3" class="num">Ganancia para {{ "{:,}".format(cantidad) }} prendas</td>
+                    <td class="num">{{ (diseno.margen_unitario * cantidad) | dinero if diseno.margen_unitario is not none else "—" }}</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+
+<section class="panel">
+    <div class="panel__head">
+        <div>
+            <h2>Pedidos con este Diseño</h2>
+            <p>Órdenes de producción asociadas</p>
+        </div>
+    </div>
+    <div class="lista-compacta">
+        {% for p in pedidos %}
+        <a href="{{ url_for('rastreo.detalle', folio=p.folio) }}">
+            <span class="kpi__icon"><i data-lucide="package"></i></span>
+            <div class="grow">
+                <strong>{{ p.folio }}</strong>
+                <small>{{ p.cantidad }} und. · Límite {{ p.fecha_limite | fecha_es }}</small>
+            </div>
+            {{ badge_pedido(p) }}
+        </a>
+        {% else %}
+        <p class="vacio">Aún no hay pedidos con este diseño.</p>
+        {% endfor %}
+    </div>
+</section>
+{% if current_user.puede_editar_disenos %}
+{{ boton_accion(accion_form, url_for('catalogo.archivar', diseno_id=diseno.id), "Restaurar diseño" if diseno.archivado else "Archivar diseño",
+                "archive-restore" if diseno.archivado else "archive", "btn btn--outline",
+                confirmar="" if diseno.archivado else "¿Archivar este diseño? Dejará de aparecer en el catálogo; sus pedidos se conservan.") }}
+{% endif %}
+{% endblock %}

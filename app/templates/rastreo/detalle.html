@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo, badge_pedido, badge_entrega %}
+{% block title %}Rastreo {{ pedido.folio }}{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('rastreo.lista') }}" class="volver"><i data-lucide="arrow-left"></i> Rastreo de Pedidos</a>
+
+<div class="page-head">
+    <div>
+        <h1>{{ pedido.folio }}</h1>
+        <p>{{ pedido.modelo_prenda }} · {{ pedido.cantidad }} unidades{% if current_user.es_staff %} · {{ pedido.cliente.nombre }}{% endif %}</p>
+    </div>
+    <div class="page-head__acciones">
+        {{ badge_pedido(pedido) }}
+        {{ badge_entrega(pedido) }}
+        <a href="{{ url_for('rastreo.ficha', folio=pedido.folio) }}" class="btn btn--outline btn--sm" target="_blank" rel="noopener"><i data-lucide="printer"></i> Ficha de la orden</a>
+        <span class="en-vivo" id="indicador-vivo" title="Se consulta el estado cada {{ refresco }} segundos">En vivo</span>
+    </div>
+</div>
+
+<!-- Fases -->
+<section class="panel">
+    <div class="stepper">
+        {% for f in FASES %}
+        {% set n = loop.index %}
+        <div class="paso {% if n < pedido.fase_actual %}paso--hecho{% elif n == pedido.fase_actual %}paso--actual{% endif %}">
+            <span class="paso__icono"><i data-lucide="{{ 'check' if n < pedido.fase_actual else f.icono }}"></i></span>
+            <strong>{{ f.nombre }}</strong>
+            <small>{{ f.descripcion }}</small>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<div class="layout-2">
+    <div>
+        <section class="panel">
+            <div class="panel__head">
+                <div>
+                    <h2>Ubicación Actual</h2>
+                    <p><i data-lucide="map-pin" style="width: 14px; height: 14px; vertical-align: -2px;"></i> {{ pedido.ubicacion_actual or "Taller Principal" }}</p>
+                </div>
+                <span class="muted small" id="ultima-consulta"></span>
+            </div>
+            <div id="mapa-pedido" class="mapa mapa--alto"></div>
+        </section>
+
+        {% if form %}
+        <section class="panel">
+            <div class="panel__head">
+                <div>
+                    <h2>Actualizar Rastreo</h2>
+                    <p>Haz clic en el mapa para fijar las coordenadas. El cliente verá el cambio al instante.</p>
+                </div>
+                <span class="kpi__icon"><i data-lucide="navigation"></i></span>
+            </div>
+            <form method="post" class="form" novalidate>
+                {{ form.hidden_tag() }}
+                <div class="form__grid">
+                    {{ campo(form.estado) }}
+                    {{ campo(form.ubicacion_actual, placeholder="Ej. Bodega de Empaque") }}
+                    {{ campo(form.latitud, step="any", placeholder="13.6929") }}
+                    {{ campo(form.longitud, step="any", placeholder="-89.2182") }}
+                    {{ campo(form.nota, "campo--full", placeholder="Ej. Salió en el camión de las 2:00 p. m.") }}
+                </div>
+                <div class="form__acciones">
+                    <button type="button" class="btn btn--outline" id="usar-taller"><i data-lucide="factory"></i> Usar ubicación del taller</button>
+                    {{ form.submit(class_="btn btn--primary") }}
+                </div>
+            </form>
+        </section>
+        {% endif %}
+    </div>
+
+    <div>
+        <section class="panel">
+            <div class="panel__head">
+                <div>
+                    <h2>Resumen</h2>
+                    <p>Fase {{ pedido.fase_actual }} de {{ pedido.total_fases }}</p>
+                </div>
+                <strong style="font-size: 22px;">{{ pedido.progreso }}%</strong>
+            </div>
+            <div class="panel__body">
+                <div class="progreso" style="margin-bottom: 20px;"><span style="width: {{ pedido.progreso }}%;"></span></div>
+                <dl class="ficha" style="border: 0; padding: 0; gap: 0;">
+                    <div class="ficha__fila"><dt>Cliente</dt><dd>{{ pedido.cliente.nombre }}</dd></div>
+                    <div class="ficha__fila"><dt>Tallas</dt><dd>{{ pedido.tallas or "—" }}</dd></div>
+                    <div class="ficha__fila"><dt>Colores</dt><dd>{{ pedido.colores or "—" }}</dd></div>
+                    <div class="ficha__fila"><dt>Fecha límite</dt><dd>{{ pedido.fecha_limite | fecha_es }}</dd></div>
+                    <div class="ficha__fila"><dt>Registrado</dt><dd>{{ pedido.creado_en | fecha_es }}</dd></div>
+                    {% if pedido.diseno %}
+                    <div class="ficha__fila"><dt>Diseño</dt><dd><a href="{{ url_for('catalogo.detalle', diseno_id=pedido.diseno.id, cantidad=pedido.cantidad) }}" style="color: var(--primary);">{{ pedido.diseno.nombre }}</a></dd></div>
+                    {% endif %}
+                </dl>
+                {% if pedido.observaciones %}
+                <div class="timeline__nota" style="margin-top: 16px;">{{ pedido.observaciones }}</div>
+                {% endif %}
+            </div>
+        </section>
+
+        {% if current_user.puede_ver_costos and (pedido.ingreso is not none or pedido.costo_estimado is not none) %}
+        <section class="panel">
+            <div class="panel__head">
+                <div><h2>Rentabilidad</h2><p>Estimada con la ficha de costos del diseño</p></div>
+                {% if pedido.margen_pct is not none %}
+                <span class="badge {{ 'badge--danger' if pedido.margen_pct < 15 else ('badge--warn' if pedido.margen_pct < 25 else 'badge--ok') }}">Margen {{ pedido.margen_pct }}%</span>
+                {% endif %}
+            </div>
+            <div class="panel__body">
+                <dl class="ficha" style="border: 0; padding: 0; gap: 0;">
+                    <div class="ficha__fila"><dt>Precio por prenda</dt><dd>{{ pedido.precio_efectivo | dinero if pedido.precio_efectivo is not none else "Sin precio" }}</dd></div>
+                    <div class="ficha__fila"><dt>Venta total</dt><dd>{{ pedido.ingreso | dinero if pedido.ingreso is not none else "—" }}</dd></div>
+                    <div class="ficha__fila"><dt>Costo estimado</dt><dd>{{ pedido.costo_estimado | dinero if pedido.costo_estimado is not none else "Sin diseño" }}</dd></div>
+                    <div class="ficha__fila"><dt>Material descontado</dt><dd>{{ pedido.costo_materiales_real | dinero }}</dd></div>
+                    <div class="ficha__fila"><dt><strong>Ganancia estimada</strong></dt><dd><strong class="{{ 'negativo' if pedido.ganancia_estimada is not none and pedido.ganancia_estimada < 0 else 'positivo' }}">{{ pedido.ganancia_estimada | dinero if pedido.ganancia_estimada is not none else "—" }}</strong></dd></div>
+                    {% if pedido.cotizacion %}
+                    <div class="ficha__fila"><dt>Cotización</dt><dd><a href="{{ url_for('cotizaciones.detalle', cotizacion_id=pedido.cotizacion.id) }}" style="color: var(--primary);">{{ pedido.cotizacion.folio }}</a></dd></div>
+                    {% endif %}
+                </dl>
+            </div>
+        </section>
+        {% endif %}
+
+        {% if current_user.es_staff %}
+        <section class="panel">
+            <div class="panel__head">
+                <div><h2>Control de Calidad</h2><p>{{ pedido.prendas_con_defecto }} prenda{{ 's' if pedido.prendas_con_defecto != 1 }} con defecto{% if pedido.cantidad %} ({{ "%.1f" | format(pedido.prendas_con_defecto / pedido.cantidad * 100) }}%){% endif %}</p></div>
+                {% if current_user.puede_registrar_calidad and pedido.fase_actual >= 2 %}
+                <a class="btn btn--outline btn--sm" href="{{ url_for('calidad.nuevo', pedido_id=pedido.id, volver=request.path) }}"><i data-lucide="plus"></i> Registrar</a>
+                {% endif %}
+            </div>
+            <div class="lista-compacta">
+                {% for r in pedido.registros_calidad %}
+                <div>
+                    <span class="kpi__icon"><i data-lucide="{{ 'circle-check' if r.resuelto else 'shield-alert' }}"></i></span>
+                    <div class="grow"><strong>{{ r.categoria }} · {{ r.cantidad }} prenda{{ 's' if r.cantidad != 1 }}</strong>
+                        <small>{{ r.linea }} · {{ r.fecha | fecha_es }}{% if r.accion_correctiva %} · {{ r.accion_correctiva }}{% endif %}</small></div>
+                    <span class="badge {{ 'badge--ok' if r.resuelto else 'badge--warn' }}">{{ 'Resuelto' if r.resuelto else 'Abierto' }}</span>
+                </div>
+                {% else %}
+                <p class="vacio">Sin defectos registrados.</p>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        <section class="panel">
+            <div class="panel__head">
+                <div>
+                    <h2>Línea de Tiempo</h2>
+                    <p>{{ eventos | length }} actualizaci{{ 'ones' if eventos | length != 1 else 'ón' }}</p>
+                </div>
+            </div>
+            {% if eventos %}
+            <ol class="timeline">
+                {% for e in eventos %}
+                <li>
+                    <span class="timeline__punto"></span>
+                    <div class="timeline__head">
+                        <strong>{{ e.estado }}</strong>
+                        <time datetime="{{ e.fecha.isoformat() }}">{{ e.fecha | fecha_es }} · {{ e.fecha | hora }}</time>
+                    </div>
+                    <p>{{ e.ubicacion or "—" }}{% if current_user.es_staff and e.usuario %} · por {{ e.usuario.nombre }}{% endif %}</p>
+                    {% if e.nota %}<div class="timeline__nota">{{ e.nota }}</div>{% endif %}
+                </li>
+                {% endfor %}
+            </ol>
+            {% else %}
+            <p class="vacio">Aún no hay actualizaciones registradas.</p>
+            {% endif %}
+        </section>
+
+        {% if insumo_form %}
+        <section class="panel">
+            <div class="panel__head">
+                <div>
+                    <h2>Consumo de Material</h2>
+                    <p>Descuenta del inventario la tela usada en este pedido</p>
+                </div>
+            </div>
+            <form method="post" action="{{ url_for('main.descontar_insumo', id_pedido=pedido.id) }}" class="form" novalidate>
+                {{ insumo_form.hidden_tag() }}
+                <input type="hidden" name="volver" value="{{ request.path }}">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    {{ campo(insumo_form.insumo_id) }}
+                    {{ campo(insumo_form.cantidad_usar, step="0.01", min="0.1", placeholder="Ej. 120") }}
+                </div>
+                <div class="form__acciones">
+                    <button type="submit" class="btn btn--outline"><i data-lucide="arrow-up-from-line"></i> Registrar salida</button>
+                </div>
+            </form>
+        </section>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{{ url_for('static', filename='js/rastreo.js') }}"></script>
+<script>
+    (function () {
+        const datos = {{ datos | tojson }};
+        const taller = {{ TALLER | tojson }};
+        const centro = (datos.lat != null && datos.lng != null) ? [datos.lat, datos.lng] : [taller.lat, taller.lng];
+        const mapa = AyCMapa.crearMapa('mapa-pedido', centro, 13);
+
+        // Taller
+        L.marker([taller.lat, taller.lng], { icon: AyCMapa.iconoTaller }).addTo(mapa)
+            .bindPopup('<strong>' + AyCMapa.escapar(taller.nombre) + '</strong>');
+
+        // Recorrido (eventos con coordenadas)
+        const ruta = datos.ruta.map((p) => [p.lat, p.lng]);
+        if (ruta.length > 1) {
+            L.polyline(ruta, { color: AyCMapa.colorRuta(), weight: 4, opacity: 0.8, dashArray: '8 8' }).addTo(mapa);
+            datos.ruta.slice(0, -1).forEach((p) => {
+                L.marker([p.lat, p.lng], { icon: AyCMapa.puntoRuta }).addTo(mapa)
+                    .bindPopup('<strong>' + AyCMapa.escapar(p.estado) + '</strong><br>' + AyCMapa.escapar(p.ubicacion) + '<br><small>' + p.fecha + '</small>');
+            });
+        }
+
+        // Posición actual
+        let actual = null;
+        if (datos.lat != null && datos.lng != null) {
+            actual = L.marker([datos.lat, datos.lng], { icon: AyCMapa.iconoActual }).addTo(mapa)
+                .bindPopup('<strong>' + AyCMapa.escapar(datos.folio) + '</strong><br>' + AyCMapa.escapar(datos.estado) + ' · ' + AyCMapa.escapar(datos.ubicacion))
+                .openPopup();
+        }
+
+        const puntos = ruta.concat([[taller.lat, taller.lng]]);
+        if (puntos.length > 1) mapa.fitBounds(puntos, { padding: [50, 50], maxZoom: 15 });
+
+        {% if form %}
+        // --- Staff: elegir coordenadas haciendo clic en el mapa ---
+        const inputLat = document.getElementById('{{ form.latitud.id }}');
+        const inputLng = document.getElementById('{{ form.longitud.id }}');
+        let seleccion = null;
+        function fijar(lat, lng) {
+            inputLat.value = lat.toFixed(6);
+            inputLng.value = lng.toFixed(6);
+            if (seleccion) seleccion.setLatLng([lat, lng]);
+            else seleccion = L.marker([lat, lng], { icon: AyCMapa.iconoPedido, draggable: true }).addTo(mapa)
+                .on('dragend', (e) => { const p = e.target.getLatLng(); fijar(p.lat, p.lng); });
+        }
+        mapa.on('click', (e) => fijar(e.latlng.lat, e.latlng.lng));
+        document.getElementById('usar-taller').addEventListener('click', () => {
+            fijar(taller.lat, taller.lng);
+            const ubic = document.getElementById('{{ form.ubicacion_actual.id }}');
+            if (!ubic.value) ubic.value = taller.nombre;
+            mapa.setView([taller.lat, taller.lng], 15);
+        });
+        {% endif %}
+
+        // --- Tiempo real: consulta periódica; recarga si hay un evento nuevo ---
+        const urlEstado = {{ url_for('rastreo.estado_json', folio=pedido.folio) | tojson }};
+        const etiqueta = document.getElementById('ultima-consulta');
+        const indicador = document.getElementById('indicador-vivo');
+        const formulario = document.querySelector('form.form');
+        let editando = false;
+        if (formulario) formulario.addEventListener('input', () => { editando = true; });
+
+        function consultar() {
+            fetch(urlEstado, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+                .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+                .then((nuevo) => {
+                    etiqueta.textContent = 'Actualizado ' + new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    indicador.style.opacity = 1;
+                    if (nuevo.ultimo_evento_id !== datos.ultimo_evento_id && !editando) {
+                        window.location.reload();
+                    }
+                })
+                .catch(() => { indicador.style.opacity = 0.4; etiqueta.textContent = 'Sin conexión, reintentando…'; });
+        }
+        consultar();
+        setInterval(consultar, {{ refresco * 1000 }});
+    })();
+</script>
+{% endblock %}

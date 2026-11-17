@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Catálogo de Diseños{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Catálogo de Diseños</h1>
+        <p>
+            {% if current_user.rol == 'cliente' %}
+                Fichas técnicas de los uniformes de {{ current_user.cliente.nombre if current_user.cliente else "tu empresa" }}.
+            {% else %}
+                Fichas técnicas de prendas y consumo de tela por cliente.
+            {% endif %}
+        </p>
+    </div>
+    {% if current_user.puede_editar_disenos %}
+    <div class="page-head__acciones">
+        <a href="{{ url_for('catalogo.lista', archivados=None if archivados else 1) }}" class="btn btn--outline"><i data-lucide="{{ 'shirt' if archivados else 'archive' }}"></i> {{ 'Ver catálogo activo' if archivados else 'Ver archivados' }}</a>
+        <a href="{{ url_for('catalogo.nuevo') }}" class="btn btn--primary"><i data-lucide="plus"></i> Nuevo Diseño</a>
+    </div>
+    {% endif %}
+</div>
+
+<div class="topbar">
+    <form class="search" method="get">
+        <i data-lucide="search"></i>
+        <input type="text" name="q" value="{{ q }}" placeholder="Buscar por nombre o tipo de prenda...">
+        {% if cliente_id %}<input type="hidden" name="cliente" value="{{ cliente_id }}">{% endif %}
+        {% if archivados %}<input type="hidden" name="archivados" value="1">{% endif %}
+    </form>
+    {% if clientes %}
+    <form method="get" class="filtro">
+        <i data-lucide="building-2"></i>
+        {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+        <select name="cliente" onchange="this.form.submit()">
+            <option value="">Todos los clientes</option>
+            {% for c in clientes %}
+                <option value="{{ c.id }}" {% if cliente_id == c.id %}selected{% endif %}>{{ c.nombre }}</option>
+            {% endfor %}
+        </select>
+    </form>
+    {% endif %}
+</div>
+
+{% if disenos %}
+<div class="catalogo-grid">
+    {% for d in disenos %}{% include "catalogo/_card.html" %}{% endfor %}
+</div>
+{% else %}
+<div class="panel">
+    <div class="vacio">
+        <i data-lucide="shirt" style="width: 48px; height: 48px; opacity: 0.5; margin-bottom: 16px;"></i>
+        {% if current_user.rol == 'cliente' and not current_user.cliente %}
+            Tu cuenta aún no está vinculada a una empresa. Contacta a un administrador.
+        {% else %}
+            No se encontraron diseños.
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

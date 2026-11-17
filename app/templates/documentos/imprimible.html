@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ doc.tipo | capitalize }} {{ doc.folio }}</title>
+    <style>
+        :root { --verde: #2D5128; --claro: #EEF3E8; --gris: #64748B; --borde: #D9E2D4; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: "Inter", Arial, sans-serif; color: #1e293b; background: #e9ede8; font-size: 13px; }
+        .hoja { max-width: 820px; margin: 24px auto; background: #fff; padding: 44px 48px; border-top: 6px solid var(--verde); box-shadow: 0 10px 30px rgba(0,0,0,0.12); }
+        .barra { max-width: 820px; margin: 16px auto 0; display: flex; justify-content: space-between; gap: 12px; align-items: center; font-size: 13px; color: var(--gris); }
+        .barra button { background: var(--verde); color: #fff; border: 0; padding: 10px 18px; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer; }
+        .cab { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+        .cab img { height: 54px; margin-bottom: 6px; }
+        .tipo { text-align: right; } .tipo h1 { color: var(--verde); font-size: 22px; } .tipo p { font-weight: 700; font-size: 15px; }
+        .muted { color: var(--gris); font-size: 12px; }
+        .info { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; background: var(--claro); padding: 14px 16px; margin-bottom: 20px; }
+        .info dl div { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+        .info dt { color: var(--gris); font-size: 12px; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: var(--verde); color: #fff; text-align: left; padding: 8px 10px; font-size: 12px; }
+        td { padding: 8px 10px; border-bottom: 1px solid var(--borde); }
+        tbody tr:nth-child(even) td { background: #f7f9f7; }
+        .R { text-align: right; }
+        .totales { width: 300px; margin: 12px 0 0 auto; }
+        .totales div { display: flex; justify-content: space-between; padding: 4px 10px; }
+        .totales div:last-child { background: var(--verde); color: #fff; font-weight: 700; font-size: 15px; }
+        .notas { margin-top: 22px; white-space: pre-line; }
+        .notas strong { display: block; color: var(--gris); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; margin: 10px 0 2px; }
+        .pie { margin-top: 26px; }
+        @media print { body { background: #fff; } .barra { display: none; } .hoja { box-shadow: none; margin: 0; max-width: none; padding: 0; border-top: 0; } }
+    </style>
+</head>
+<body>
+    <div class="barra">
+        <span>Vista imprimible · instala <code>reportlab</code> para descargar el PDF directamente.</span>
+        <button type="button" onclick="window.print()">Imprimir / Guardar PDF</button>
+    </div>
+    <article class="hoja">
+        <header class="cab">
+            <div>
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="">
+                <p><strong>{{ doc.empresa.nombre }}</strong></p>
+                {% for l in doc.empresa.lineas %}<p class="muted">{{ l }}</p>{% endfor %}
+            </div>
+            <div class="tipo"><h1>{{ doc.tipo }}</h1><p>{{ doc.folio }}</p></div>
+        </header>
+        <section class="info">
+            <div>
+                <p class="muted">{{ doc.destinatario.titulo | upper }}</p>
+                <p><strong>{{ doc.destinatario.nombre }}</strong></p>
+                {% for l in doc.destinatario.lineas %}<p>{{ l }}</p>{% endfor %}
+            </div>
+            <dl>{% for k, v in doc.datos %}<div><dt>{{ k }}</dt><dd>{{ v }}</dd></div>{% endfor %}</dl>
+        </section>
+        <table>
+            <thead><tr>{% for c in doc.columnas %}<th class="{{ doc.alinear[loop.index0] }}">{{ c }}</th>{% endfor %}</tr></thead>
+            <tbody>
+                {% for fila in doc.filas %}
+                <tr>{% for v in fila %}<td class="{{ doc.alinear[loop.index0] }}">{{ v }}</td>{% endfor %}</tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="totales">{% for k, v in doc.totales %}<div><span>{{ k }}</span><span>{{ v }}</span></div>{% endfor %}</div>
+        {% if doc.notas %}<div class="notas">{% for k, v in doc.notas %}<strong>{{ k }}</strong>{{ v }}{% endfor %}</div>{% endif %}
+        {% if doc.pie %}<p class="pie muted">{{ doc.pie }}</p>{% endif %}
+    </article>
+</body>
+</html>

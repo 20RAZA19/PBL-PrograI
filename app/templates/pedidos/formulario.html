@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo %}
+
+{% block title %}Nuevo Pedido{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('main.kanban_pedidos') }}" class="volver">
+    <i data-lucide="arrow-left"></i> Volver al Tablero
+</a>
+
+<div class="page-head">
+    <div>
+        <h1>Registrar Nuevo Pedido</h1>
+        <p>Complete los datos para generar una orden de producción con folio único. Se guardará con estado «Recibido».</p>
+    </div>
+</div>
+
+<div class="panel panel--form">
+    <form method="post" class="form" novalidate>
+        {{ form.hidden_tag() }}
+        
+        <div class="form__grid">
+            <div>
+                {{ campo(form.cliente_id) }}
+                {% if current_user.puede_gestionar_contactos %}
+                <a href="{{ url_for('contactos.nuevo_cliente', siguiente='pedido') }}" class="small" style="color: var(--primary); font-weight: 600; display: inline-flex; gap: 4px; align-items: center; margin-top: 8px;">
+                    <i data-lucide="user-plus" style="width: 14px; height: 14px;"></i> ¿Cliente nuevo? Regístralo primero
+                </a>
+                {% endif %}
+            </div>
+            {{ campo(form.fecha_limite, type="date") }}
+
+            <div class="campo--full">
+                {{ campo(form.diseno_id) }}
+            </div>
+            
+            <div class="campo--full">
+                {{ campo(form.modelo_prenda) }}
+            </div>
+            
+            {{ campo(form.tallas) }}
+            {{ campo(form.colores) }}
+            
+            {{ campo(form.cantidad, min="1") }}
+            {{ campo(form.precio_unitario, step="0.01", min="0", placeholder="Ej. 12.50") }}
+            
+            <div class="campo--full">
+                {{ campo(form.observaciones) }}
+            </div>
+        </div>
+        
+        <div class="form__acciones">
+            <a href="{{ url_for('main.kanban_pedidos') }}" class="btn btn--outline">Cancelar</a>
+            <button type="submit" class="btn btn--primary">
+                <i data-lucide="save"></i> Generar Orden de Producción
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    /* Al elegir un diseño se propone su precio de venta y su nombre como modelo */
+    (function () {
+        const precios = {{ precios | tojson }};
+        const diseno = document.getElementById('{{ form.diseno_id.id }}');
+        const precio = document.getElementById('{{ form.precio_unitario.id }}');
+        const modelo = document.getElementById('{{ form.modelo_prenda.id }}');
+        diseno.addEventListener('change', () => {
+            const p = precios[diseno.value];
+            if (p !== undefined && !precio.value) precio.value = p.toFixed(2);
+            if (diseno.value !== '0' && !modelo.value) modelo.value = diseno.options[diseno.selectedIndex].text.split(' · ')[0];
+        });
+    })();
+</script>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo %}
+{% block title %}Nueva conversación{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Nueva conversación</h1>
+        <p>Cuéntanos qué necesitas: dudas sobre un pedido, una prenda, fechas o cualquier gestión. Te responde el asistente de ventas.</p>
+    </div>
+</div>
+
+<form method="post" novalidate>
+    <section class="panel panel--form">
+        <div class="form">
+            {{ form.hidden_tag() }}
+            <div class="form__grid">
+                {{ campo(form.asunto, "campo--full", placeholder="Ej. Fecha de entrega del pedido ORD-DEMO-0003") }}
+                {{ campo(form.texto, "campo--full", rows="5", placeholder="Escribe tu mensaje…") }}
+            </div>
+            <div class="form__acciones">
+                <a href="{{ url_for('mensajes.lista') }}" class="btn btn--outline">Cancelar</a>
+                <button type="submit" class="btn btn--primary"><i data-lucide="send"></i> Enviar</button>
+            </div>
+        </div>
+    </section>
+</form>
+{% endblock %}

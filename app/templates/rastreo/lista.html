@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge_pedido, badge_entrega %}
+{% block title %}Rastreo de Pedidos{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Rastreo de Pedidos</h1>
+        <p>
+            {% if current_user.rol == 'cliente' %}
+                Ubicación y fase de los pedidos de {{ current_user.cliente.nombre if current_user.cliente else "tu empresa" }}.
+            {% else %}
+                Ubicación y fase de todas las órdenes de producción.
+            {% endif %}
+        </p>
+    </div>
+    <span class="en-vivo">En vivo</span>
+</div>
+
+<div class="topbar">
+    <form class="search" method="get">
+        <i data-lucide="search"></i>
+        <input type="text" name="q" value="{{ q }}" placeholder="Buscar por folio, prenda{{ ' o cliente' if current_user.es_staff }}...">
+        <input type="hidden" name="vista" value="{{ vista }}">
+        {% if fase %}<input type="hidden" name="fase" value="{{ fase }}">{% endif %}
+    </form>
+    <div class="flex flex--wrap">
+        <div class="tabs">
+            <a href="{{ url_for('rastreo.lista', vista='activos', q=q or None) }}" class="{% if vista == 'activos' and not fase %}active{% endif %}">Activos</a>
+            <a href="{{ url_for('rastreo.lista', vista='todos', q=q or None) }}" class="{% if vista == 'todos' and not fase %}active{% endif %}">Todos</a>
+        </div>
+        <form method="get" class="filtro">
+            <i data-lucide="filter"></i>
+            {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+            <input type="hidden" name="vista" value="todos">
+            <select name="fase" onchange="this.form.submit()">
+                <option value="">Todas las fases</option>
+                {% for f in FASES %}
+                    <option value="{{ f.nombre }}" {% if fase == f.nombre %}selected{% endif %}>{{ f.nombre }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+</div>
+
+<section class="panel">
+    <div class="panel__head">
+        <div>
+            <h2>Mapa de Pedidos</h2>
+            <p>{{ marcadores | length }} pedido{{ 's' if marcadores | length != 1 }} con ubicación registrada</p>
+        </div>
+    </div>
+    <div id="mapa-general" class="mapa"></div>
+</section>
+
+{% if pedidos %}
+<div class="pedidos-grid">
+    {% for p in pedidos %}
+    <a class="pedido-card" href="{{ url_for('rastreo.detalle', folio=p.folio) }}">
+        <div class="pedido-card__top">
+            <div>
+                <strong>{{ p.folio }}</strong>
+                <small>{{ p.modelo_prenda }}{% if current_user.es_staff %} · {{ p.cliente.nombre }}{% endif %}</small>
+            </div>
+            {{ badge_pedido(p) }}
+        </div>
+        <div>
+            <div class="flex flex--between small" style="margin-bottom: 8px;">
+                <span class="muted">Fase {{ p.fase_actual }} de {{ p.total_fases }}</span>
+                <strong>{{ p.progreso }}%</strong>
+            </div>
+            <div class="progreso"><span style="width: {{ p.progreso }}%;"></span></div>
+        </div>
+        <div class="pedido-card__ubic"><i data-lucide="map-pin"></i> {{ p.ubicacion_actual or "Taller Principal" }}</div>
+        <div class="pedido-card__pie">
+            <span>{{ p.cantidad }} und. · {{ p.fecha_limite | fecha_es }}</span>
+            {{ badge_entrega(p) }}
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="panel">
+    <div class="vacio">
+        <i data-lucide="map-pinned" style="width: 48px; height: 48px; opacity: 0.5; margin-bottom: 16px;"></i>
+        {% if current_user.rol == 'cliente' and not current_user.cliente %}
+            Tu cuenta aún no está vinculada a una empresa. Contacta a un administrador.
+        {% else %}
+            No hay pedidos que coincidan con el filtro.
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{{ url_for('static', filename='js/rastreo.js') }}"></script>
+<script>
+    (function () {
+        const marcadores = {{ marcadores | tojson }};
+        const taller = {{ TALLER | tojson }};
+        const mapa = AyCMapa.crearMapa('mapa-general', [taller.lat, taller.lng], 12);
+        const limites = [[taller.lat, taller.lng]];
+
+        L.marker([taller.lat, taller.lng], { icon: AyCMapa.iconoTaller })
+            .addTo(mapa).bindPopup('<strong>' + AyCMapa.escapar(taller.nombre) + '</strong>');
+
+        marcadores.forEach((p) => {
+            const html = '<strong>' + AyCMapa.escapar(p.folio) + '</strong><br>' +
+                AyCMapa.escapar(p.modelo) + '<br><span style="color:#64748b">' + AyCMapa.escapar(p.estado) +
+                ' · ' + AyCMapa.escapar(p.ubicacion) + '</span><br><a href="' + p.url + '">Ver rastreo →</a>';
+            L.marker([p.lat, p.lng], { icon: p.estado === 'En Ruta' ? AyCMapa.iconoActual : AyCMapa.iconoPedido })
+                .addTo(mapa).bindPopup(html);
+            limites.push([p.lat, p.lng]);
+        });
+
+        if (limites.length > 1) mapa.fitBounds(limites, { padding: [40, 40], maxZoom: 14 });
+    })();
+</script>
+{% endblock %}

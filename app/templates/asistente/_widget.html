@@ -1,0 +1,31 @@
+{# Asistente AyC: se incluye en base.html para usuarios autenticados #}
+<div class="asistente" id="asistente" data-url="{{ url_for('asistente.preguntar') }}" data-usuario="{{ current_user.id }}">
+    <button type="button" class="asistente__fab" id="asistente-abrir" aria-label="Abrir asistente" aria-expanded="false" aria-controls="asistente-panel">
+        <i data-lucide="message-circle-question"></i>
+        <span class="asistente__fab-texto">¿Necesitas ayuda?</span>
+    </button>
+
+    <section class="asistente__panel" id="asistente-panel" role="dialog" aria-label="Asistente AyC" hidden>
+        <header class="asistente__head">
+            <span class="asistente__avatar"><i data-lucide="sparkles"></i></span>
+            <div class="grow">
+                <strong>Asistente AyC</strong>
+                <small>Te guío en cualquier gestión del sistema</small>
+            </div>
+            <button type="button" class="asistente__icono" id="asistente-limpiar" title="Nueva conversación" aria-label="Nueva conversación"><i data-lucide="rotate-ccw"></i></button>
+            <button type="button" class="asistente__icono" id="asistente-cerrar" title="Cerrar" aria-label="Cerrar asistente"><i data-lucide="x"></i></button>
+        </header>
+
+        <div class="asistente__mensajes" id="asistente-mensajes" aria-live="polite"></div>
+
+        <div class="asistente__chips" id="asistente-chips">
+            {% for s in asistente_sugerencias %}<button type="button" class="asistente__chip">{{ s }}</button>{% endfor %}
+        </div>
+
+        <form class="asistente__form" id="asistente-form" autocomplete="off">
+            <input type="text" id="asistente-input" maxlength="300" placeholder="Escribe tu pregunta…" aria-label="Escribe tu pregunta">
+            <button type="submit" class="asistente__enviar" aria-label="Enviar"><i data-lucide="send-horizontal"></i></button>
+        </form>
+        <p class="asistente__aviso">Responde solo sobre el uso de AyC Control · funciona sin conexión a servicios externos</p>
+    </section>
+</div>

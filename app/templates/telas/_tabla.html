@@ -8,7 +8,7 @@
     <table>
         <thead>
             <tr>
-                <th>Tela / Material</th>
+                <th>Insumo / Material</th>
                 <th>Código Pantone</th>
                 <th>Disponibilidad</th>
                 <th>Estado</th>
@@ -20,15 +20,16 @@
             <tr>
                 <td>
                     <a class="tela" href="{{ url_for('telas.detalle', tela_id=tela.id) }}">
-                        <span class="muestra" style="background: {{ tela.color_hex }}"></span>
+                        {% if tela.imagen %}<img class="miniatura" src="{{ url_for('static', filename=tela.imagen) }}" alt="" loading="lazy" style="width: 38px; height: 38px;">
+                        {% else %}<span class="muestra" style="background: {{ tela.color_hex }}"></span>{% endif %}
                         <div>
                             <strong>{{ tela.nombre }}</strong>
-                            <span>{{ tela.tipo }}</span>
+                            <span class="muted small">{{ tela.categoria }} · {{ tela.tipo }}</span>
                         </div>
                     </a>
                 </td>
                 <td><span class="chip">{{ tela.codigo_pantone or "—" }}</span></td>
-                <td><strong>{{ tela.metros_disponibles | metros }} mts</strong></td>
+                <td><strong>{{ tela.metros_disponibles | metros }} {{ tela.unidad_medida | unidad_corta }}</strong></td>
                 <td><span class="badge {{ clases_estado[tela.estado] }}">{{ tela.estado }}</span></td>
                 <td>
                     <details class="menu">
@@ -37,6 +38,7 @@
                             <a href="{{ url_for('telas.detalle', tela_id=tela.id) }}">
                                 <i data-lucide="eye"></i> Ver detalle
                             </a>
+                            {% if current_user.puede_editar_inventario %}
                             <a href="{{ url_for('telas.movimiento', tela_id=tela.id, tipo='entrada') }}">
                                 <i data-lucide="arrow-down-to-line"></i> Registrar entrada
                             </a>
@@ -46,12 +48,13 @@
                             <a href="{{ url_for('telas.editar', tela_id=tela.id) }}">
                                 <i data-lucide="pencil"></i> Editar
                             </a>
+                            {% endif %}
                         </div>
                     </details>
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="5" class="vacio">No se encontraron telas.</td></tr>
+            <tr><td colspan="5" class="vacio">No se encontraron insumos.</td></tr>
             {% endfor %}
         </tbody>
     </table>

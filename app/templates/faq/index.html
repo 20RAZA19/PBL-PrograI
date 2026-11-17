@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Preguntas Frecuentes{% endblock %}
+
+{% set iconos = {
+    "General": "sparkles", "Cuenta": "user-cog", "Pedidos": "package", "Diseños": "shirt",
+    "Inventario": "box", "Producción": "kanban", "Contactos": "contact", "Ventas": "file-text", "Administración": "shield-check"
+} %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Preguntas Frecuentes</h1>
+        <p>Respuestas rápidas sobre el uso de AyC Control.</p>
+    </div>
+</div>
+
+<div class="topbar" style="margin-bottom: 16px;">
+    <div class="search">
+        <i data-lucide="search"></i>
+        <input type="search" id="faq-buscar" placeholder="Buscar una pregunta..." aria-label="Buscar una pregunta">
+    </div>
+</div>
+
+<div class="faq-filtros" role="tablist">
+    <button type="button" class="active" data-categoria="">Todas</button>
+    {% for c in categorias %}
+    <button type="button" data-categoria="{{ c }}">{{ c }}</button>
+    {% endfor %}
+</div>
+
+<div class="acordeon" id="faq-lista">
+    {% for p in preguntas %}
+    <details data-categoria="{{ p.categoria }}" {% if loop.first %}open{% endif %}>
+        <summary>
+            <span class="acordeon__icono"><i data-lucide="{{ iconos.get(p.categoria, 'help-circle') }}"></i></span>
+            <span>{{ p.pregunta }}</span>
+            <i data-lucide="chevron-down" class="chev"></i>
+        </summary>
+        <div>{{ p.respuesta }}</div>
+    </details>
+    {% endfor %}
+</div>
+<p class="vacio" id="faq-vacio" style="display: none;">No encontramos preguntas con ese texto.</p>
+
+<section class="panel contacto-card">
+    <div class="panel__body flex grow" style="gap: 18px;">
+        <span class="kpi__icon"><i data-lucide="headset"></i></span>
+        <div>
+            <h2 style="font-size: 17px; margin-bottom: 4px;">¿No encontraste tu respuesta?</h2>
+            <p class="muted small">Escríbenos y el equipo de Arte y Color te ayudará.</p>
+        </div>
+    </div>
+    <div class="panel__body">
+        <a href="mailto:soporte@arteycolor.com" class="btn btn--primary"><i data-lucide="mail"></i> Contactar soporte</a>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        const buscar = document.getElementById('faq-buscar');
+        const items = Array.from(document.querySelectorAll('#faq-lista details'));
+        const botones = Array.from(document.querySelectorAll('.faq-filtros button'));
+        const vacio = document.getElementById('faq-vacio');
+        let categoria = '';
+
+        function normalizar(t) { return t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+
+        function filtrar() {
+            const termino = normalizar(buscar.value.trim());
+            let visibles = 0;
+            items.forEach((d) => {
+                const coincideCat = !categoria || d.dataset.categoria === categoria;
+                const coincideTxt = !termino || normalizar(d.textContent).includes(termino);
+                const mostrar = coincideCat && coincideTxt;
+                d.style.display = mostrar ? '' : 'none';
+                if (mostrar) visibles++;
+                if (termino && mostrar) d.open = true;
+            });
+            vacio.style.display = visibles ? 'none' : '';
+        }
+
+        buscar.addEventListener('input', filtrar);
+        botones.forEach((b) => b.addEventListener('click', () => {
+            botones.forEach((x) => x.classList.remove('active'));
+            b.classList.add('active');
+            categoria = b.dataset.categoria;
+            filtrar();
+        }));
+    })();
+</script>
+{% endblock %}

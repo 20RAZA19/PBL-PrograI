@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge_pedido, badge_entrega %}
+{% block title %}Mi Portal{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>Hola, {{ current_user.nombre.split()[0] }}</h1>
+    <p>
+        {% if current_user.cliente %}
+            Este es el portal de <strong style="color: #fff;">{{ current_user.cliente.nombre }}</strong>. Sigue tus pedidos en tiempo real y consulta las fichas técnicas de tus uniformes.
+        {% else %}
+            Tu cuenta aún no está vinculada a una empresa. Contacta a Arte y Color para que un administrador active tu acceso a pedidos y diseños.
+        {% endif %}
+    </p>
+    <div class="hero__acciones">
+        {% if current_user.puede_solicitar %}<a href="{{ url_for('solicitudes.nueva') }}" class="btn btn--primary"><i data-lucide="plus"></i> Solicitar prendas</a>{% endif %}
+        <a href="{{ url_for('rastreo.lista') }}" class="btn {{ 'btn--outline' if current_user.puede_solicitar else 'btn--primary' }}"><i data-lucide="map"></i> Rastrear mis pedidos</a>
+        <a href="{{ url_for('catalogo.lista') }}" class="btn btn--outline"><i data-lucide="shopping-bag"></i> Ver mis diseños</a>
+    </div>
+</section>
+
+<section class="kpis">
+    <div class="kpi">
+        <div class="kpi__head">Pedidos Activos
+            <span class="kpi__icon"><i data-lucide="package"></i></span>
+        </div>
+        <p class="kpi__valor">{{ resumen.activos }} <small>Órdenes</small></p>
+        <div class="kpi__pie"><span class="badge badge--info">{{ resumen.unidades }} und.</span> En proceso</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi__head">En Camino
+            <span class="kpi__icon"><i data-lucide="truck"></i></span>
+        </div>
+        <p class="kpi__valor">{{ resumen.en_ruta }} <small>Envíos</small></p>
+        <div class="kpi__pie"><span class="badge badge--brand">En Ruta</span> Rumbo a tu empresa</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi__head">Entregados
+            <span class="kpi__icon"><i data-lucide="circle-check-big"></i></span>
+        </div>
+        <p class="kpi__valor">{{ resumen.entregados }} <small>Pedidos</small></p>
+        <div class="kpi__pie"><span class="badge badge--ok">Completados</span> Historial total</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi__head">Mis Diseños
+            <span class="kpi__icon"><i data-lucide="shirt"></i></span>
+        </div>
+        <p class="kpi__valor">{{ resumen.disenos }} <small>Modelos</small></p>
+        <div class="kpi__pie"><span class="badge badge--ok">Catálogo</span> Fichas técnicas</div>
+    </div>
+</section>
+
+{% if solicitudes %}
+<section class="panel">
+    <div class="panel__head">
+        <div><h2>Mis solicitudes en curso</h2><p>Cuando aprobemos tu propuesta verás aquí la cotización para aceptarla</p></div>
+        <a href="{{ url_for('solicitudes.lista') }}" class="btn btn--outline btn--sm"><i data-lucide="clipboard-list"></i> Ver todas</a>
+    </div>
+    <div class="lista-compacta">
+        {% for s in solicitudes %}
+        <a href="{{ url_for('solicitudes.detalle', solicitud_id=s.id) }}">
+            <span class="kpi__icon"><i data-lucide="clipboard-list"></i></span>
+            <div class="grow"><strong>{{ s.folio }} · {{ s.resumen_prendas }}</strong>
+                <small>{{ "{:,}".format(s.total_prendas) }} prendas{% if s.total is not none %} · {{ s.total | dinero }} + IVA{% endif %}{% if s.vigente %} · vence el {{ s.vence_en | fecha_es }}{% endif %}</small></div>
+            {% if s.vencida %}<span class="badge badge--warn">Cotización vencida</span>
+            {% elif s.estado == 'aprobada' %}<span class="badge badge--brand">Cotización lista: acéptala</span>
+            {% else %}<span class="badge badge--info">En revisión</span>{% endif %}
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{% if cotizaciones %}
+<section class="panel">
+    <div class="panel__head">
+        <div><h2>Cotizaciones por responder</h2><p>Revisa la propuesta y acéptala para que iniciemos la producción</p></div>
+        <a href="{{ url_for('cotizaciones.lista') }}" class="btn btn--outline btn--sm"><i data-lucide="file-text"></i> Ver todas</a>
+    </div>
+    <div class="lista-compacta">
+        {% for c in cotizaciones %}
+        <a href="{{ url_for('cotizaciones.detalle', cotizacion_id=c.id) }}">
+            <span class="kpi__icon"><i data-lucide="file-text"></i></span>
+            <div class="grow"><strong>{{ c.folio }} · {{ c.total | dinero }}</strong>
+                <small>{{ "{:,}".format(c.total_prendas) }} prendas · vigente hasta {{ c.fecha_vencimiento | fecha_es }}</small></div>
+            <span class="badge badge--info">Por responder</span>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<div class="dash-grid">
+    <section class="panel span-8">
+        <div class="panel__head">
+            <div>
+                <h2>Pedidos en Curso</h2>
+                <p>Avance de cada orden en el taller</p>
+            </div>
+            <a href="{{ url_for('rastreo.lista') }}" class="btn btn--outline btn--sm">Ver todos</a>
+        </div>
+        <div class="lista-compacta">
+            {% for p in activos %}
+            <a href="{{ url_for('rastreo.detalle', folio=p.folio) }}" style="flex-wrap: wrap;">
+                <div class="grow" style="min-width: 220px;">
+                    <strong>{{ p.folio }} · {{ p.modelo_prenda }}</strong>
+                    <small>{{ p.cantidad }} und. · {{ p.ubicacion_actual or "Taller Principal" }}</small>
+                    <div class="progreso" style="margin-top: 10px;"><span style="width: {{ p.progreso }}%;"></span></div>
+                </div>
+                {{ badge_pedido(p) }}
+                {{ badge_entrega(p) }}
+            </a>
+            {% else %}
+            <div class="vacio">
+                <i data-lucide="package-open" style="width: 40px; height: 40px; opacity: 0.5; margin-bottom: 12px;"></i>
+                No tienes pedidos en curso.
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="panel span-4">
+        <div class="panel__head">
+            <div>
+                <h2>Próxima Entrega</h2>
+                <p>La orden con fecha más cercana</p>
+            </div>
+        </div>
+        <div class="panel__body">
+            {% if proxima %}
+                <p class="ficha__titulo">{{ proxima.folio }}</p>
+                <h3 style="font-size: 18px; margin: 6px 0 4px;">{{ proxima.modelo_prenda }}</h3>
+                <p class="muted small">Fecha límite: {{ proxima.fecha_limite | fecha_es }}</p>
+                <div style="margin: 18px 0 10px;" class="flex flex--between">
+                    {{ badge_pedido(proxima) }}
+                    <strong>{{ proxima.progreso }}%</strong>
+                </div>
+                <div class="progreso"><span style="width: {{ proxima.progreso }}%;"></span></div>
+                <a href="{{ url_for('rastreo.detalle', folio=proxima.folio) }}" class="btn btn--primary btn--block" style="margin-top: 22px;">
+                    <i data-lucide="map-pin"></i> Ver ubicación en el mapa
+                </a>
+            {% else %}
+                <p class="vacio" style="padding: 30px 0;">Sin entregas pendientes.</p>
+            {% endif %}
+        </div>
+    </section>
+</div>
+
+{% if disenos %}
+<section class="panel">
+    <div class="panel__head">
+        <div>
+            <h2>Diseños de tu Empresa</h2>
+            <p>Fichas técnicas registradas en Arte y Color</p>
+        </div>
+        <a href="{{ url_for('catalogo.lista') }}" class="btn btn--outline btn--sm">Ver catálogo</a>
+    </div>
+    <div class="panel__body">
+        <div class="catalogo-grid">
+            {% for d in disenos %}{% include "catalogo/_card.html" %}{% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+{% endblock %}

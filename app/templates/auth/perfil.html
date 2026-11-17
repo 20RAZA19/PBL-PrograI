@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo %}
+
+{% block title %}Mi Perfil{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Mi Perfil</h1>
+        <p>Mantén actualizados tus datos de contacto y la seguridad de tu cuenta.</p>
+    </div>
+</div>
+
+<section class="panel">
+    <div class="perfil-head">
+        <span class="avatar avatar--lg">{{ current_user.iniciales }}</span>
+        <div class="grow">
+            <h2>{{ current_user.nombre }}</h2>
+            <p class="muted small">{{ current_user.email }}</p>
+        </div>
+        <span class="badge badge--brand">{{ current_user.rol_legible }}</span>
+    </div>
+    <div class="perfil-datos">
+        <div><span>Cargo</span><strong>{{ current_user.cargo or "—" }}</strong></div>
+        <div><span>Teléfono</span><strong>{{ current_user.telefono or "—" }}</strong></div>
+        <div><span>Edad</span><strong>{{ (current_user.edad ~ " años") if current_user.edad is not none else "—" }}</strong></div>
+        {% if current_user.cliente %}
+        <div><span>Empresa</span><strong>{{ current_user.cliente.nombre }}</strong></div>
+        {% endif %}
+        <div><span>Miembro desde</span><strong>{{ current_user.creado_en | fecha_es }}</strong></div>
+    </div>
+</section>
+
+<div class="dash-grid">
+    <section class="panel span-7">
+        <div class="panel__head">
+            <div>
+                <h2>Datos personales</h2>
+                <p>Esta información es visible para los administradores.</p>
+            </div>
+        </div>
+        <form method="post" class="form" novalidate>
+            {{ form.hidden_tag() }}
+            <div class="form__grid">
+                {{ campo(form.nombre, "campo--full", autocomplete="name") }}
+                {{ campo(form.telefono, placeholder="Ej. +503 7000 0000", autocomplete="tel") }}
+                {{ campo(form.fecha_nacimiento, type="date") }}
+                {{ campo(form.cargo, "campo--full", placeholder="Ej. Supervisora de Taller") }}
+            </div>
+            <div class="form__acciones">
+                {{ form.submit(class_="btn btn--primary") }}
+            </div>
+        </form>
+    </section>
+
+    <section class="panel span-5">
+        <div class="panel__head">
+            <div>
+                <h2>Seguridad</h2>
+                <p>Cambia tu contraseña de acceso.</p>
+            </div>
+            <span class="kpi__icon"><i data-lucide="lock-keyhole"></i></span>
+        </div>
+        <form method="post" class="form" novalidate>
+            {{ pwd_form.hidden_tag() }}
+            <div style="display: flex; flex-direction: column; gap: 18px;">
+                {{ campo(pwd_form.password_actual, autocomplete="current-password") }}
+                {{ campo(pwd_form.password_nueva, autocomplete="new-password") }}
+                {{ campo(pwd_form.password_confirmar, autocomplete="new-password") }}
+            </div>
+            <div class="form__acciones">
+                {{ pwd_form.submit(class_="btn btn--outline") }}
+            </div>
+        </form>
+    </section>
+</div>
+{% endblock %}

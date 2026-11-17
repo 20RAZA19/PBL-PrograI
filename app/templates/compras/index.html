@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Compras Sugeridas{% endblock %}
+
+{% set clases_estado = {"Disponible": "badge--ok", "Stock Bajo": "badge--warn", "Crítico": "badge--danger"} %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Compras Sugeridas</h1>
+        <p>Calculadas con el stock actual, el consumo pendiente de los pedidos activos y lo que ya viene en camino.</p>
+    </div>
+    <div class="page-head__acciones">
+        <a href="{{ url_for('compras.ordenes') }}" class="btn btn--outline"><i data-lucide="list"></i> Órdenes de compra</a>
+    </div>
+</div>
+
+<section class="panel">
+    <div class="panel__body" style="display: grid; gap: 6px; font-size: 13.5px; color: var(--text-muted);">
+        <p><strong style="color: var(--text-main);">¿Cómo se calcula?</strong>
+        Sugerido = (stock mínimo × 1.5) − (disponible + en camino − consumo pendiente de pedidos en Recibido, Corte y Costura).
+        Se redondea a cantidades cómodas: metros de 5 en 5 y unidades de 10 en 10. Puedes cambiar cualquier cantidad antes de generar la orden.</p>
+    </div>
+</section>
+
+{% if pendientes %}
+<section class="panel">
+    <div class="panel__head"><div><h2>Órdenes en curso</h2><p>Su mercadería ya se descuenta de las sugerencias</p></div></div>
+    <div class="lista-compacta">
+        {% for oc in pendientes %}
+        <a href="{{ url_for('compras.detalle', orden_id=oc.id) }}">
+            <span class="kpi__icon"><i data-lucide="shopping-cart"></i></span>
+            <div class="grow">
+                <strong>{{ oc.folio }} · {{ oc.proveedor.nombre if oc.proveedor else "Sin proveedor" }}</strong>
+                <small>{{ oc.lineas | length }} insumo{{ 's' if oc.lineas | length != 1 }} · {{ oc.total | dinero }}{% if oc.fecha_esperada %} · esperada {{ oc.fecha_esperada | fecha_es }}{% endif %}</small>
+            </div>
+            {% if oc.atrasada %}<span class="badge badge--danger">Atrasada</span>{% endif %}
+            <span class="badge {{ 'badge--neutral' if oc.estado == 'borrador' else 'badge--info' }}">{{ oc.estado_legible }}</span>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{% for proveedor, filas, total in grupos %}
+<section class="panel">
+    <form method="post" action="{{ url_for('compras.generar') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="proveedor_id" value="{{ proveedor.id if proveedor else '' }}">
+        <div class="grupo-compra__head" style="border-radius: var(--radius-lg) var(--radius-lg) 0 0;">
+            <div class="tela">
+                <span class="avatar avatar--sm">{{ (proveedor.nombre if proveedor else "?") | iniciales }}</span>
+                <div>
+                    <h3>{{ proveedor.nombre if proveedor else "Insumos sin proveedor asignado" }}</h3>
+                    <p>{% if proveedor %}{{ proveedor.rubro or "" }}{% if proveedor.telefono %} · {{ proveedor.telefono }}{% endif %}{% else %}Asigna un proveedor habitual en la ficha del insumo para agruparlos.{% endif %}</p>
+                </div>
+            </div>
+            <strong>Estimado {{ total | dinero }}</strong>
+        </div>
+        <div class="tabla-wrap">
+            <table class="tabla-compacta">
+                <thead>
+                    <tr>
+                        <th>Insumo</th>
+                        <th class="num">Disponible</th>
+                        <th class="num">Pedidos activos</th>
+                        <th class="num">En camino</th>
+                        <th class="num">Quedaría</th>
+                        <th class="num">Comprar</th>
+                        <th class="num">Costo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for f in filas %}
+                    {% set u = f.insumo.unidad_medida | unidad_corta %}
+                    <tr>
+                        <td>
+                            <a class="tela" href="{{ url_for('telas.detalle', tela_id=f.insumo.id) }}">
+                                <span class="muestra" style="background: {{ f.insumo.color_hex }}"></span>
+                                <div>
+                                    <strong>{{ f.insumo.nombre }}</strong>
+                                    <span class="muted small">{{ f.insumo.codigo or "" }} · mínimo {{ f.minimo | metros }} {{ u }}
+                                        <span class="badge {{ clases_estado[f.insumo.estado] }}">{{ f.insumo.estado }}</span></span>
+                                    {% if f.pedidos %}<span class="motivo-compra">Para {{ f.pedidos | map(attribute=0) | map(attribute='folio') | join(', ') }}</span>{% endif %}
+                                </div>
+                            </a>
+                        </td>
+                        <td class="num">{{ f.disponible | metros }} {{ u }}</td>
+                        <td class="num">{% if f.demanda %}−{{ f.demanda | metros }} {{ u }}{% else %}<span class="muted">0</span>{% endif %}</td>
+                        <td class="num">{% if f.en_camino %}+{{ f.en_camino | metros }}{% else %}<span class="muted">0</span>{% endif %}</td>
+                        <td class="num {{ 'negativo' if f.proyectado < 0 else '' }}">{{ f.proyectado | metros }} {{ u }}</td>
+                        <td class="num">
+                            <label class="sr-only" for="c{{ f.insumo.id }}">Cantidad a comprar de {{ f.insumo.nombre }}</label>
+                            <input id="c{{ f.insumo.id }}" class="input input--cantidad" type="number" min="0" step="0.01"
+                                   name="cantidad_{{ f.insumo.id }}" value="{{ '%g' | format(f.sugerido | float) }}"
+                                   data-costo="{{ f.insumo.costo_unitario | float }}">
+                        </td>
+                        <td class="num">{% if f.insumo.tiene_costo %}{{ f.costo | dinero }}{% else %}<span class="muted" title="Registra el costo en la ficha del insumo">sin costo</span>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="grupo-compra__pie">
+            <div class="campo">
+                <label for="fe{{ loop.index }}">Entrega solicitada</label>
+                <input id="fe{{ loop.index }}" class="input" type="date" name="fecha_esperada" value="{{ fecha_sugerida.isoformat() }}">
+            </div>
+            <div class="campo grow" style="max-width: 360px;">
+                <label for="nt{{ loop.index }}">Notas para el proveedor</label>
+                <input id="nt{{ loop.index }}" class="input" name="notas" maxlength="500" placeholder="Ej. Entregar en bodega de 8 a. m. a 4 p. m.">
+            </div>
+            <button type="submit" class="btn btn--primary"><i data-lucide="file-plus"></i> Generar orden de compra</button>
+        </div>
+    </form>
+</section>
+{% else %}
+<section class="panel">
+    <div class="rec-ok">
+        <i data-lucide="circle-check-big"></i>
+        <div><strong>No hace falta comprar nada por ahora</strong><p>Todos los insumos cubren los pedidos activos y su stock mínimo.</p></div>
+    </div>
+</section>
+{% endfor %}
+
+{% if cubiertos %}
+<section class="panel">
+    <div class="panel__head"><div><h2>En alerta pero cubiertos</h2><p>Están bajos, pero lo que viene en camino alcanza</p></div></div>
+    <div class="lista-compacta">
+        {% for f in cubiertos %}
+        <a href="{{ url_for('telas.detalle', tela_id=f.insumo.id) }}">
+            <span class="muestra" style="background: {{ f.insumo.color_hex }}; width: 34px; height: 34px;"></span>
+            <div class="grow"><strong>{{ f.insumo.nombre }}</strong><small>Disponible {{ f.disponible | metros }} · en camino {{ f.en_camino | metros }} {{ f.insumo.unidad_medida | unidad_corta }}</small></div>
+            <span class="badge badge--ok">Cubierto</span>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+{% endblock %}

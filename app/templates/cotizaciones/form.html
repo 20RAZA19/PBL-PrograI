@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('cotizaciones.detalle', cotizacion_id=cot.id) if cot else url_for('cotizaciones.lista') }}" class="volver"><i data-lucide="arrow-left"></i> {{ cot.folio if cot else 'Cotizaciones' }}</a>
+
+<div class="page-head">
+    <div>
+        <h1>{{ titulo }}</h1>
+        <p>Elige un diseño del catálogo para traer su precio sugerido, o escribe una prenda a la medida.</p>
+    </div>
+</div>
+
+<form method="post" class="form-cotizacion" novalidate>
+    {{ form.hidden_tag() }}
+
+    <section class="panel panel--form">
+        <div class="form">
+            <div class="form__grid">
+                {{ campo(form.cliente_id) }}
+                {{ campo(form.fecha_entrega, type="date") }}
+                {{ campo(form.validez_dias, min="1", max="180") }}
+                <div class="flex" style="gap: 12px; align-items: start;">
+                    {{ campo(form.descuento_pct, "grow", step="0.01", min="0", max="100") }}
+                    {{ campo(form.iva_pct, "grow", step="0.01", min="0", max="100") }}
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel__head">
+            <div>
+                <h2>Prendas a cotizar</h2>
+                <p>Precio unitario en dólares, antes de IVA</p>
+            </div>
+            <button type="button" class="btn btn--outline btn--sm" id="agregar-linea"><i data-lucide="plus"></i> Agregar prenda</button>
+        </div>
+        <div class="tabla-wrap">
+            <table class="editor-lineas">
+                <thead>
+                    <tr>
+                        <th style="width: 24%;">Diseño del catálogo</th>
+                        <th>Descripción</th>
+                        <th style="width: 15%;">Tallas</th>
+                        <th style="width: 10%;" class="num">Cantidad</th>
+                        <th style="width: 12%;" class="num">Precio unit.</th>
+                        <th style="width: 11%;" class="num">Importe</th>
+                        <th style="width: 44px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="lineas"></tbody>
+            </table>
+        </div>
+        <div class="doc-pie" style="padding-top: 20px;">
+            <div>
+                {% if current_user.puede_ver_costos %}
+                <div class="margen-box" id="margen-box">
+                    <i data-lucide="calculator"></i>
+                    <span id="margen-texto">Elige diseños con ficha técnica para estimar la ganancia.</span>
+                </div>
+                {% endif %}
+            </div>
+            <div class="totales">
+                <div><span>Subtotal</span><strong id="t-subtotal">$0.00</strong></div>
+                <div><span>Descuento</span><span id="t-descuento">−$0.00</span></div>
+                <div><span>IVA</span><span id="t-iva">$0.00</span></div>
+                <div class="totales__total"><span>Total</span><span id="t-total">$0.00</span></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel panel--form">
+        <div class="form">
+            <div class="form__grid">
+                {{ campo(form.condiciones, "campo--full", rows="4") }}
+                {{ campo(form.notas, "campo--full", rows="3", placeholder="Ej. Incluye bordado del logo en pecho izquierdo.") }}
+            </div>
+            <div class="form__acciones">
+                <a href="{{ url_for('cotizaciones.detalle', cotizacion_id=cot.id) if cot else url_for('cotizaciones.lista') }}" class="btn btn--outline">Cancelar</a>
+                <button type="submit" class="btn btn--primary"><i data-lucide="save"></i> Guardar borrador</button>
+            </div>
+        </div>
+    </section>
+</form>
+
+<template id="plantilla-linea">
+    <tr>
+        <td>
+            <select name="linea_diseno" class="input" aria-label="Diseño">
+                <option value="">— Prenda a la medida —</option>
+            </select>
+        </td>
+        <td><input name="linea_descripcion" class="input" maxlength="200" placeholder="Ej. Camisa Oxford manga larga" aria-label="Descripción"></td>
+        <td><input name="linea_tallas" class="input" maxlength="100" placeholder="S, M, L" aria-label="Tallas"></td>
+        <td><input name="linea_cantidad" class="input num" type="number" min="1" step="1" placeholder="0" aria-label="Cantidad"></td>
+        <td><input name="linea_precio" class="input num" type="number" min="0" step="0.01" placeholder="0.00" aria-label="Precio unitario"></td>
+        <td class="num importe">$0.00</td>
+        <td><button type="button" class="btn-icono editor-lineas__quitar" title="Quitar prenda" aria-label="Quitar prenda"><i data-lucide="trash-2"></i></button></td>
+    </tr>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const disenos = {{ disenos | tojson }};
+    const iniciales = {{ lineas | tojson }};
+    const cuerpo = document.getElementById('lineas');
+    const plantilla = document.getElementById('plantilla-linea');
+    const selCliente = document.getElementById('{{ form.cliente_id.id }}');
+    const desc = document.getElementById('{{ form.descuento_pct.id }}');
+    const iva = document.getElementById('{{ form.iva_pct.id }}');
+    const dinero = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+    const num = (v) => { const n = parseFloat(String(v || '').replace(/,/g, '')); return isNaN(n) ? 0 : n; };
+
+    function opciones(select, elegido) {
+        const cliente = parseInt(selCliente.value, 10);
+        // Primero los diseños del cliente, luego los generales y los de otros clientes
+        const orden = disenos.slice().sort((a, b) => (b.cliente_id === cliente) - (a.cliente_id === cliente));
+        orden.forEach((d) => {
+            const o = document.createElement('option');
+            o.value = d.id;
+            o.textContent = d.nombre + (d.precio != null ? ' · ' + dinero.format(d.precio) : ' · sin precio');
+            if (String(d.id) === String(elegido)) o.selected = true;
+            select.appendChild(o);
+        });
+    }
+
+    function agregar(datos) {
+        const fila = plantilla.content.firstElementChild.cloneNode(true);
+        const sel = fila.querySelector('[name=linea_diseno]');
+        opciones(sel, datos && datos.diseno_id);
+        if (datos) {
+            fila.querySelector('[name=linea_descripcion]').value = datos.descripcion || '';
+            fila.querySelector('[name=linea_tallas]').value = datos.tallas || '';
+            fila.querySelector('[name=linea_cantidad]').value = datos.cantidad || '';
+            fila.querySelector('[name=linea_precio]').value = datos.precio_unitario != null ? Number(datos.precio_unitario).toFixed(2) : '';
+        }
+        sel.addEventListener('change', () => {
+            const d = disenos.find((x) => String(x.id) === sel.value);
+            if (!d) return;
+            fila.querySelector('[name=linea_descripcion]').value = d.nombre;
+            fila.querySelector('[name=linea_tallas]').value = d.tallas;
+            if (d.precio != null) fila.querySelector('[name=linea_precio]').value = d.precio.toFixed(2);
+            calcular();
+        });
+        fila.querySelector('.editor-lineas__quitar').addEventListener('click', () => {
+            fila.remove();
+            if (!cuerpo.children.length) agregar();
+            calcular();
+        });
+        fila.addEventListener('input', calcular);
+        cuerpo.appendChild(fila);
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function calcular() {
+        let subtotal = 0, costo = 0, costeable = true, alguna = false;
+        cuerpo.querySelectorAll('tr').forEach((fila) => {
+            const cant = num(fila.querySelector('[name=linea_cantidad]').value);
+            const precio = num(fila.querySelector('[name=linea_precio]').value);
+            const importe = cant * precio;
+            fila.querySelector('.importe').textContent = dinero.format(importe);
+            subtotal += importe;
+            if (cant > 0) {
+                alguna = true;
+                const d = disenos.find((x) => String(x.id) === fila.querySelector('[name=linea_diseno]').value);
+                if (d && d.costo > 0) costo += d.costo * cant; else costeable = false;
+            }
+        });
+        const descuento = subtotal * num(desc.value) / 100;
+        const base = subtotal - descuento;
+        const impuesto = base * num(iva.value) / 100;
+        document.getElementById('t-subtotal').textContent = dinero.format(subtotal);
+        document.getElementById('t-descuento').textContent = '−' + dinero.format(descuento);
+        document.getElementById('t-iva').textContent = dinero.format(impuesto);
+        document.getElementById('t-total').textContent = dinero.format(base + impuesto);
+
+        const margen = document.getElementById('margen-texto');
+        if (margen) {
+            if (alguna && costeable && base > 0) {
+                const pct = (base - costo) / base * 100;
+                margen.innerHTML = 'Costo estimado <strong>' + dinero.format(costo) + '</strong> · ganancia <strong>' +
+                    dinero.format(base - costo) + '</strong> (' + pct.toFixed(1) + ' %)' +
+                    (pct < 15 ? ' · <span class="negativo">margen bajo</span>' : '');
+            } else {
+                margen.textContent = 'Elige diseños con ficha técnica para estimar la ganancia.';
+            }
+        }
+    }
+
+    (iniciales.length ? iniciales : [null]).forEach(agregar);
+    document.getElementById('agregar-linea').addEventListener('click', () => agregar());
+    [desc, iva].forEach((el) => el.addEventListener('input', calcular));
+    selCliente.addEventListener('change', () => {
+        cuerpo.querySelectorAll('[name=linea_diseno]').forEach((sel) => {
+            const actual = sel.value;
+            sel.querySelectorAll('option:not(:first-child)').forEach((o) => o.remove());
+            opciones(sel, actual);
+        });
+    });
+    calcular();
+})();
+</script>
+{% endblock %}

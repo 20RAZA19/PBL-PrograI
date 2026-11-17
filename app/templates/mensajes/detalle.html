@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "_macros.html" import boton_accion %}
+{% block title %}{{ c.asunto }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <p class="kmodal__eyebrow"><a href="{{ url_for('mensajes.lista') }}">← Mensajes</a></p>
+        <h1>{{ c.asunto }}</h1>
+        <p>
+            {% if current_user.rol == 'cliente' %}Conversación con el asistente de ventas de Arte y Color{% else %}{{ c.cliente.nombre }} · abierta por {{ c.creada_por.nombre if c.creada_por else 'cliente' }}{% endif %}
+            · {{ c.creada_en | fecha_es }}
+        </p>
+    </div>
+    <div class="flex" style="gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
+        {% if c.guardada %}
+        <span class="badge badge--info" title="No se borra sola"><i data-lucide="bookmark" style="width: 12px; height: 12px;"></i> Guardada</span>
+        {% else %}
+        <span class="badge badge--neutral" title="Se borra sola si nadie escribe">Se borra el {{ c.caduca_en(dias) | fecha_es }}</span>
+        {% endif %}
+        {% if current_user.rol == 'cliente' %}
+            {{ boton_accion(accion_form, url_for('mensajes.guardar', conversacion_id=c.id),
+                            "Quitar de guardadas" if c.guardada else "Guardar conversación", "bookmark-x" if c.guardada else "bookmark") }}
+            {{ boton_accion(accion_form, url_for('mensajes.eliminar', conversacion_id=c.id), "Eliminar", "trash-2", "btn btn--danger btn--sm",
+                            confirmar="¿Eliminar esta conversación y todos sus mensajes? No se puede deshacer.") }}
+        {% endif %}
+    </div>
+</div>
+
+<section class="panel chat" id="chat" data-url="{{ url_for('mensajes.mensajes_json', conversacion_id=c.id) }}"
+         data-refresco="{{ refresco }}" data-lado="{{ 'cliente' if current_user.rol == 'cliente' else 'equipo' }}"
+         data-ultimo="{{ c.mensajes[-1].id if c.mensajes else 0 }}">
+    <div class="chat__mensajes" id="chat-mensajes" aria-live="polite">
+        {% for m in c.mensajes %}
+        <div class="chat__msg {% if m.de_cliente == (current_user.rol == 'cliente') %}chat__msg--mio{% else %}chat__msg--otro{% endif %}" data-id="{{ m.id }}">
+            <span class="chat__autor">{{ m.autor.nombre if m.autor else ('Cliente' if m.de_cliente else 'Arte y Color') }} · {{ m.creado_en.strftime('%d/%m %H:%M') }}</span>
+            <p>{{ m.texto }}</p>
+        </div>
+        {% endfor %}
+    </div>
+    <form method="post" action="{{ url_for('mensajes.enviar_mensaje', conversacion_id=c.id) }}" class="chat__form" id="chat-form" novalidate>
+        {{ form.hidden_tag() }}
+        {{ form.texto(class_="input", rows="2", placeholder="Escribe un mensaje… (Enter para enviar, Shift+Enter para salto de línea)", maxlength="1000", id="chat-texto") }}
+        <button type="submit" class="btn btn--primary" aria-label="Enviar"><i data-lucide="send-horizontal"></i></button>
+    </form>
+    <p class="chat__aviso">
+        {% if current_user.rol == 'cliente' %}
+        Tus mensajes se guardan en el servidor solo mientras la conversación está activa. Puedes guardarla para conservarla o eliminarla cuando quieras.
+        {% else %}
+        El cliente decide si esta conversación se conserva. No la copies a notas de contacto sin su consentimiento.
+        {% endif %}
+    </p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/mensajes.js') }}"></script>
+{% endblock %}

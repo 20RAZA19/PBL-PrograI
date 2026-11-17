@@ -6,3 +6,52 @@
     {% for error in field.errors %}<small class="error">{{ error }}</small>{% endfor %}
 </div>
 {% endmacro %}
+
+{# Casilla de verificación (BooleanField) con el mismo estilo de tarjeta #}
+{% macro casilla(field, descripcion="", clase="") %}
+<div class="campo {{ clase }}">
+    <label class="casilla" for="{{ field.id }}">
+        {{ field(**kwargs) }}
+        <span>
+            <strong>{{ field.label.text }}</strong>
+            {% if descripcion %}<small>{{ descripcion }}</small>{% endif %}
+        </span>
+    </label>
+    {% for error in field.errors %}<small class="error">{{ error }}</small>{% endfor %}
+</div>
+{% endmacro %}
+
+{# Botón que envía un POST protegido con CSRF (usa un AccionForm de WTForms) #}
+{% macro boton_accion(form, url, texto, icono="", clase="btn btn--outline btn--sm", confirmar="", titulo="") %}
+<form method="post" action="{{ url }}" class="form-inline"
+      {% if confirmar %}onsubmit="return confirm('{{ confirmar }}');"{% endif %}>
+    {{ form.hidden_tag() }}
+    <button type="submit" class="{{ clase }}" {% if titulo %}title="{{ titulo }}" aria-label="{{ titulo }}"{% endif %}>
+        {% if icono %}<i data-lucide="{{ icono }}"></i>{% endif %}{{ texto }}
+    </button>
+</form>
+{% endmacro %}
+
+{# Badge del estado de un pedido según su fase #}
+{% macro badge_pedido(pedido) %}
+{% set clases = {
+    "Recibido": "badge--neutral", "En Corte": "badge--info", "En Costura": "badge--info",
+    "Terminado": "badge--warn", "En Ruta": "badge--brand", "Entregado": "badge--ok"
+} %}
+<span class="badge {{ clases.get(pedido.estado, 'badge--neutral') }}">{{ pedido.estado }}</span>
+{% endmacro %}
+
+{# Indicador de días para la fecha límite #}
+{% macro badge_entrega(pedido) %}
+{% if pedido.entregado %}
+    <span class="badge badge--ok">Entregado</span>
+{% elif pedido.alerta_entrega == "vencido" %}
+    <span class="badge badge--danger">Vencido hace {{ -pedido.dias_restantes }} d</span>
+{% elif pedido.dias_restantes == 0 %}
+    <span class="badge badge--warn">Vence hoy</span>
+{% elif pedido.alerta_entrega == "pronto" %}
+    <span class="badge badge--warn">{{ pedido.dias_restantes }} d restantes</span>
+{% else %}
+    <span class="badge badge--neutral">{{ pedido.dias_restantes }} d restantes</span>
+{% endif %}
+{% endmacro %}

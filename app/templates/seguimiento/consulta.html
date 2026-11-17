@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo, badge_pedido, badge_entrega %}
+{% block title %}Seguimiento de pedidos{% endblock %}
+
+{% block content %}
+<div class="auth-card {% if usuario %}auth-card--seguimiento{% endif %}">
+    {% if not current_user.is_authenticated %}
+    <div style="display: flex; justify-content: center; margin-bottom: 24px;">
+        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Arte y Color" style="max-width: 170px; background: #fff; padding: 12px 18px; border-radius: 16px; box-shadow: var(--shadow);">
+    </div>
+    {% endif %}
+
+    {% if usuario %}
+    <div class="panel">
+        <div class="panel__head">
+            <div>
+                <h2>Pedidos de {{ usuario.cliente.nombre }}</h2>
+                <p>{{ activos | length }} en proceso · consulta de solo lectura</p>
+            </div>
+            <a href="{{ url_for('seguimiento.consulta') }}" class="btn btn--outline btn--sm"><i data-lucide="log-out"></i> Salir</a>
+        </div>
+        {% for p in activos %}
+        <article class="seg-pedido">
+            <header>
+                <div><strong>{{ p.folio }}</strong><span>{{ p.modelo_prenda }} · {{ "{:,}".format(p.cantidad) }} und.</span></div>
+                <div class="flex" style="gap: 6px; flex-wrap: wrap; justify-content: flex-end;">{{ badge_pedido(p) }} {{ badge_entrega(p) }}</div>
+            </header>
+            <div class="progreso" role="progressbar" aria-valuenow="{{ p.progreso }}" aria-valuemin="0" aria-valuemax="100" aria-label="Avance de {{ p.folio }}"><span style="width: {{ p.progreso }}%"></span></div>
+            <footer>
+                <span><i data-lucide="calendar"></i> Entrega: {{ p.fecha_limite | fecha_es }}</span>
+                <span><i data-lucide="map-pin"></i> {{ p.ubicacion_actual or "Taller Principal" }}</span>
+                <span>Fase {{ p.fase_actual }} de {{ p.total_fases }}</span>
+            </footer>
+        </article>
+        {% else %}
+        <p class="vacio">No hay pedidos en proceso en este momento.</p>
+        {% endfor %}
+    </div>
+
+    {% if entregados %}
+    <details class="panel plegable">
+        <summary class="panel__head"><div><h2>Entregados</h2><p>Últimos {{ entregados | length }} pedidos completados</p></div><i data-lucide="chevron-down"></i></summary>
+        <div class="lista-compacta">
+            {% for p in entregados %}
+            <div>
+                <span class="kpi__icon"><i data-lucide="package-check"></i></span>
+                <div class="grow"><strong>{{ p.folio }} · {{ p.modelo_prenda }}</strong><small>{{ "{:,}".format(p.cantidad) }} und.</small></div>
+                <span class="badge badge--ok">Entregado</span>
+            </div>
+            {% endfor %}
+        </div>
+    </details>
+    {% endif %}
+    <p class="muted small" style="text-align: center; margin-top: 16px;">Para solicitar prendas o ver el detalle completo, <a href="{{ url_for('auth.login') }}" style="color: var(--primary); font-weight: 600;">inicia sesión en tu portal</a>.</p>
+
+    {% else %}
+    <div class="panel">
+        <div class="panel__head" style="justify-content: center; text-align: center; padding-bottom: 10px; border-bottom: 0;">
+            <div>
+                <h2>Seguimiento de pedidos</h2>
+                <p>Consulta el avance de tus pedidos sin iniciar sesión</p>
+            </div>
+        </div>
+        <form method="post" class="form" style="padding-top: 0;" novalidate autocomplete="off">
+            {{ form.hidden_tag() }}
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                {{ campo(form.token, placeholder="AYC-XXXX-XXXX", autocapitalize="characters", spellcheck="false") }}
+                {{ campo(form.digitos, placeholder="0000", inputmode="numeric", maxlength="4", pattern="[0-9]{4}") }}
+                <button type="submit" class="btn btn--primary" style="width: 100%; justify-content: center; margin-top: 10px; padding: 12px;">
+                    <i data-lucide="search"></i> Consultar mis pedidos
+                </button>
+            </div>
+        </form>
+        <div style="text-align: center; margin-top: 10px; font-size: 14px; padding: 0 24px 24px; color: var(--text-muted);">
+            ¿No tienes tu token? Pídelo a tu asesor de Arte y Color.<br>
+            <a href="{{ url_for('auth.login') }}" style="color: var(--primary); font-weight: 600;">Ir al inicio de sesión</a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

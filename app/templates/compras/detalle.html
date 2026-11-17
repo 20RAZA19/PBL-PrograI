@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% from "_macros.html" import boton_accion %}
+{% block title %}{{ orden.folio }}{% endblock %}
+
+{% set clases = {"borrador": "badge--neutral", "enviada": "badge--info", "recibida": "badge--ok", "cancelada": "badge--danger"} %}
+
+{% block content %}
+<a href="{{ url_for('compras.ordenes') }}" class="volver"><i data-lucide="arrow-left"></i> Órdenes de compra</a>
+
+<div class="page-head">
+    <div>
+        <h1>{{ orden.folio }}</h1>
+        <p>{{ orden.proveedor.nombre if orden.proveedor else "Sin proveedor" }} · {{ orden.total | dinero }}
+            <span class="badge {{ clases.get(orden.estado, 'badge--neutral') }}">{{ orden.estado_legible }}</span>
+            {% if orden.atrasada %}<span class="badge badge--danger">Atrasada</span>{% endif %}
+        </p>
+    </div>
+    <div class="page-head__acciones">
+        <a href="{{ url_for('compras.pdf', orden_id=orden.id) }}" class="btn btn--outline" target="_blank" rel="noopener"><i data-lucide="file-text"></i> Ver PDF</a>
+        <a href="{{ url_for('compras.pdf', orden_id=orden.id, descargar=1) }}" class="btn btn--outline"><i data-lucide="download"></i> Descargar</a>
+        {% if orden.estado == 'borrador' %}
+            {{ boton_accion(accion_form, url_for('compras.cambiar_estado', orden_id=orden.id, accion='enviar'), "Marcar como enviada", "send", "btn btn--outline") }}
+        {% endif %}
+        {% if orden.estado in ('borrador', 'enviada') %}
+            {{ boton_accion(accion_form, url_for('compras.cambiar_estado', orden_id=orden.id, accion='recibir'), "Recibir mercadería", "package-check", "btn btn--primary",
+                            confirmar="Se sumarán las cantidades al inventario y se actualizará el costo de cada insumo. ¿Continuar?") }}
+        {% endif %}
+    </div>
+</div>
+
+<section class="panel">
+    <div class="doc-cabecera">
+        <div>
+            <p class="ficha__titulo">Proveedor</p>
+            {% if orden.proveedor %}
+            <h3 style="margin: 4px 0 6px;"><a href="{{ url_for('contactos.detalle', tipo='proveedores', registro_id=orden.proveedor.id) }}">{{ orden.proveedor.nombre }}</a></h3>
+            <p class="muted small">{% if orden.proveedor.contacto %}Atención: {{ orden.proveedor.contacto }}<br>{% endif %}{{ orden.proveedor.telefono or "" }} {{ orden.proveedor.email or "" }}</p>
+            {% if orden.proveedor.notas_acuerdos %}<p class="small" style="margin-top: 8px;"><strong>Acuerdos:</strong> {{ orden.proveedor.notas_acuerdos }}</p>{% endif %}
+            {% else %}<h3>Sin proveedor asignado</h3>{% endif %}
+        </div>
+        <dl>
+            <div><dt>Creada</dt><dd>{{ orden.fecha | fecha_es }} · {{ orden.fecha | hora }}</dd></div>
+            <div><dt>Entrega solicitada</dt><dd>{{ orden.fecha_esperada | fecha_es }}</dd></div>
+            {% if orden.fecha_recepcion %}<div><dt>Recibida</dt><dd>{{ orden.fecha_recepcion | fecha_es }} · {{ orden.fecha_recepcion | hora }}</dd></div>{% endif %}
+            <div><dt>Solicitada por</dt><dd>{{ orden.usuario.nombre if orden.usuario else "—" }}</dd></div>
+        </dl>
+    </div>
+
+    {% set editable = orden.estado == 'borrador' %}
+    <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="tabla-wrap">
+            <table class="tabla-compacta">
+                <thead><tr><th>Insumo</th><th class="num">Disponible hoy</th><th class="num">Cantidad</th><th class="num">Costo unit.</th><th class="num">Importe</th></tr></thead>
+                <tbody>
+                    {% for l in orden.lineas %}
+                    <tr>
+                        <td>
+                            <a class="tela" href="{{ url_for('telas.detalle', tela_id=l.insumo.id) }}">
+                                <span class="muestra" style="background: {{ l.insumo.color_hex }}"></span>
+                                <div><strong>{{ l.insumo.nombre }}</strong><span class="muted small">{{ l.insumo.codigo or "" }} · {{ l.insumo.unidad_medida }}</span></div>
+                            </a>
+                        </td>
+                        <td class="num">{{ l.insumo.cantidad_disponible | metros }} {{ l.insumo.unidad_medida | unidad_corta }}</td>
+                        {% if editable %}
+                        <td class="num"><input class="input input--cantidad" type="number" min="0" step="0.01" name="cantidad_{{ l.id }}" value="{{ '%g' | format(l.cantidad | float) }}" aria-label="Cantidad de {{ l.insumo.nombre }}"></td>
+                        <td class="num"><input class="input input--cantidad" type="number" min="0" step="0.01" name="costo_{{ l.id }}" value="{{ '%.2f' | format(l.costo_unitario | float) }}" aria-label="Costo de {{ l.insumo.nombre }}"></td>
+                        {% else %}
+                        <td class="num">{{ l.cantidad | metros }} {{ l.insumo.unidad_medida | unidad_corta }}</td>
+                        <td class="num">{{ l.costo_unitario | dinero }}</td>
+                        {% endif %}
+                        <td class="num"><strong>{{ l.importe | dinero }}</strong></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="doc-pie" style="padding-top: 20px;">
+            <div>
+                {% if editable %}
+                <div class="form__grid" style="grid-template-columns: 1fr 2fr;">
+                    <div class="campo"><label for="fecha_esperada">Entrega solicitada</label>
+                        <input id="fecha_esperada" class="input" type="date" name="fecha_esperada" value="{{ orden.fecha_esperada.isoformat() if orden.fecha_esperada else '' }}"></div>
+                    <div class="campo"><label for="notas">Notas</label>
+                        <input id="notas" class="input" name="notas" maxlength="500" value="{{ orden.notas or '' }}"></div>
+                </div>
+                <p class="muted small" style="margin: 10px 0;">Pon una cantidad en 0 para quitar el insumo de la orden.</p>
+                <button type="submit" class="btn btn--outline"><i data-lucide="save"></i> Guardar cambios</button>
+                {% elif orden.notas %}
+                <div class="doc-texto"><strong>Notas</strong>{{ orden.notas }}</div>
+                {% endif %}
+            </div>
+            <div class="totales">
+                <div class="totales__total"><span>Total</span><span>{{ orden.total | dinero }}</span></div>
+            </div>
+        </div>
+    </form>
+</section>
+
+{% if orden.estado in ('borrador', 'enviada') %}
+{{ boton_accion(accion_form, url_for('compras.cambiar_estado', orden_id=orden.id, accion='cancelar'), "Cancelar orden", "ban", "btn btn--danger",
+                confirmar="¿Cancelar esta orden de compra?") }}
+{% endif %}
+{% endblock %}

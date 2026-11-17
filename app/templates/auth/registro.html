@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo %}
+
+{% block title %}Registro de Usuario{% endblock %}
+
+{% block content %}
+<div class="auth-card auth-card--ancha">
+    <div style="display: flex; justify-content: center; margin-bottom: 24px;">
+        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Arte y Color" style="max-width: 170px; background: #fff; padding: 12px 18px; border-radius: 16px; box-shadow: var(--shadow);">
+    </div>
+    <div class="panel">
+        <div class="panel__head" style="justify-content: center; text-align: center; padding-bottom: 10px; border-bottom: 0;">
+            <div>
+                <h2>Crear Cuenta</h2>
+                <p>Completa el formulario para registrarte en AyC Control</p>
+            </div>
+        </div>
+        <form method="post" class="form" style="padding-top: 0;" novalidate>
+            {{ form.hidden_tag() }}
+
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                {{ campo(form.nombre, autocomplete="name") }}
+                {{ campo(form.email, autocomplete="email") }}
+
+                <div class="form-grid" style="gap: 16px;">
+                    {{ campo(form.password, autocomplete="new-password") }}
+                    {{ campo(form.confirm_password, autocomplete="new-password") }}
+                </div>
+
+                {{ campo(form.rol_solicitado) }}
+                <div id="campo-empresa">
+                    {{ campo(form.empresa, placeholder="Ej. Banco Nacional de México") }}
+                </div>
+                <small class="ayuda" id="aviso-rol" style="display: none;">
+                    <i data-lucide="info" style="width: 14px; height: 14px; vertical-align: -2px;"></i>
+                    Los roles internos (Taller, Ventas y Administración) requieren aprobación antes de poder iniciar sesión.
+                </small>
+
+                <button type="submit" class="btn btn--primary" style="width: 100%; justify-content: center; margin-top: 10px; padding: 12px;">
+                    <i data-lucide="user-plus"></i> Solicitar Registro
+                </button>
+            </div>
+        </form>
+        <div style="text-align: center; margin-top: 10px; font-size: 14px; padding-bottom: 24px; color: var(--text-muted);">
+            ¿Ya tienes una cuenta? <a href="{{ url_for('auth.login') }}" style="color: var(--primary); font-weight: 600;">Inicia sesión</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        const rol = document.getElementById('{{ form.rol_solicitado.id }}');
+        const empresa = document.getElementById('campo-empresa');
+        const aviso = document.getElementById('aviso-rol');
+        function actualizar() {
+            const esCliente = rol.value === 'cliente';
+            empresa.style.display = esCliente ? '' : 'none';
+            aviso.style.display = esCliente ? 'none' : '';
+        }
+        rol.addEventListener('change', actualizar);
+        actualizar();
+    })();
+</script>
+{% endblock %}

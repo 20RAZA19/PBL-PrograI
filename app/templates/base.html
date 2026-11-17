@@ -3,60 +3,178 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Inventario{% endblock %} | Arte y Color</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}AyC Control{% endblock %} | Arte y Color</title>
+    <script>
+        /* Aplica el tema antes de pintar para evitar parpadeo */
+        try { if (localStorage.getItem('theme') === 'dark') document.documentElement.setAttribute('data-theme', 'dark'); } catch (e) {}
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <script src="https://unpkg.com/lucide@latest"></script>
+    {# Versión fija: «@latest» cargaría cualquier versión nueva sin revisarla #}
+    <script src="https://unpkg.com/lucide@0.517.0"></script>
+    <script>window.lucide = window.lucide || { createIcons: function () {} }; /* sin internet: la página sigue funcionando */</script>
+    {% block head %}{% endblock %}
 </head>
-<body>
+<body class="{% if not current_user.is_authenticated %}auth-layout{% endif %}">
+    {% if current_user.is_authenticated %}
     <aside class="sidebar">
         <div class="sidebar__logo">
-            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Arte y Color">
+            <a href="{{ url_for('main.dashboard') }}"><img src="{{ url_for('static', filename='img/logo.png') }}" alt="Arte y Color"></a>
         </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 16px 16px;">
+            <span style="font-size: 12px; color: rgba(255,255,255,0.45); text-transform: uppercase; font-weight: 600;">Menú Principal</span>
+            <div class="sidebar__herramientas">
+                <details class="menu avisos" id="avisos">
+                    <summary class="avisos__boton" title="Notificaciones" aria-label="Notificaciones{% if avisos_sin_leer %}: {{ avisos_sin_leer }} sin leer{% endif %}">
+                        <i data-lucide="bell"></i>
+                        {% if avisos_sin_leer %}<span class="avisos__contador">{{ avisos_sin_leer if avisos_sin_leer < 100 else "99+" }}</span>{% endif %}
+                    </summary>
+                    <div class="avisos__panel" role="dialog" aria-label="Notificaciones">
+                        <div class="avisos__head">
+                            <strong>Notificaciones</strong>
+                            {% if avisos_sin_leer %}
+                            <form method="post" action="{{ url_for('notificaciones.leer_todas') }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="volver" value="{{ request.full_path }}">
+                                <button type="submit" class="avisos__link">Marcar todo como leído</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        <div class="avisos__lista">
+                            {% for n in avisos %}
+                            <a href="{{ url_for('notificaciones.ir', notificacion_id=n.id) }}" class="aviso aviso--{{ n.nivel }} {% if not n.leida %}aviso--nuevo{% endif %}">
+                                <span class="aviso__icono"><i data-lucide="{{ n.icono }}"></i></span>
+                                <span class="aviso__texto">
+                                    <strong>{{ n.titulo }}</strong>
+                                    {% if n.mensaje %}<small>{{ n.mensaje }}</small>{% endif %}
+                                    <time>{{ n.creada_en | hace }}</time>
+                                </span>
+                            </a>
+                            {% else %}
+                            <p class="avisos__vacio"><i data-lucide="bell-off"></i> No tienes notificaciones.</p>
+                            {% endfor %}
+                        </div>
+                        <a class="avisos__todas" href="{{ url_for('notificaciones.lista') }}">Ver todas las notificaciones</a>
+                    </div>
+                </details>
+                <button id="theme-toggle" title="Cambiar Tema" aria-label="Cambiar tema"><i data-lucide="moon"></i></button>
+            </div>
+        </div>
+
+        <form class="sidebar__buscar" action="{{ url_for('reportes.buscar') }}" method="get" role="search">
+            <i data-lucide="search"></i>
+            <input type="search" name="q" placeholder="Folio, cliente o prenda…" aria-label="Buscar en AyC Control" value="{{ request.args.get('q', '') if request.endpoint == 'reportes.buscar' else '' }}">
+        </form>
 
         {% set ep = request.endpoint or "" %}
         <nav class="sidebar__nav">
-            <a href="{{ url_for('main.dashboard') }}"
-               class="nav-link {% if ep == 'main.dashboard' %}active{% endif %}">
-                <i data-lucide="layout-dashboard"></i> Dashboard Principal
+            <a href="{{ url_for('main.dashboard') }}" class="nav-link {% if ep == 'main.dashboard' %}active{% endif %}">
+                <i data-lucide="layout-dashboard"></i> {{ 'Mi Portal' if current_user.rol == 'cliente' else 'Dashboard' }}
             </a>
-            <a href="{{ url_for('telas.lista') }}"
-               class="nav-link {% if ep.startswith('telas.') %}active{% endif %}">
-                <i data-lucide="layers"></i> Materia Prima (Telas)
+
+            {% if current_user.es_staff %}
+            <div class="nav-sep">Operación</div>
+            <a href="{{ url_for('telas.lista') }}" class="nav-link {% if ep.startswith('telas.') %}active{% endif %}">
+                <i data-lucide="box"></i> Inventario de Insumos
             </a>
-            <a href="#" class="nav-link">
-                <i data-lucide="box"></i> Diseños Previos y Renders
+            <a href="{{ url_for('main.kanban_pedidos') }}" class="nav-link {% if ep == 'main.kanban_pedidos' %}active{% endif %}">
+                <i data-lucide="kanban"></i> Tablero de Producción
             </a>
-            <a href="#" class="nav-link">
-                <i data-lucide="history"></i> Histórico de Pedidos
+            <a href="{{ url_for('contactos.lista') }}" class="nav-link {% if ep.startswith('contactos.') %}active{% endif %}">
+                <i data-lucide="contact"></i> Contactos
+            </a>
+            <a href="{{ url_for('solicitudes.lista') }}" class="nav-link {% if ep.startswith('solicitudes.') %}active{% endif %}">
+                <i data-lucide="clipboard-list"></i> Solicitudes
+                {% if prendas_por_atender %}<span class="nav-badge">{{ prendas_por_atender }}</span>{% endif %}
+            </a>
+            <a href="{{ url_for('cotizaciones.lista') }}" class="nav-link {% if ep.startswith('cotizaciones.') %}active{% endif %}">
+                <i data-lucide="file-text"></i> Cotizaciones
+            </a>
+            {% if current_user.rol in ('admin', 'ventas') %}
+            <a href="{{ url_for('mensajes.lista') }}" class="nav-link {% if ep.startswith('mensajes.') %}active{% endif %}">
+                <i data-lucide="messages-square"></i> Mensajes
+                {% if mensajes_sin_leer %}<span class="nav-badge">{{ mensajes_sin_leer }}</span>{% endif %}
+            </a>
+            {% endif %}
+            {% if current_user.puede_comprar %}
+            <a href="{{ url_for('compras.index') }}" class="nav-link {% if ep.startswith('compras.') %}active{% endif %}">
+                <i data-lucide="shopping-cart"></i> Compras
+            </a>
+            {% endif %}
+            <a href="{{ url_for('calidad.index') }}" class="nav-link {% if ep.startswith('calidad.') %}active{% endif %}">
+                <i data-lucide="shield-check"></i> Control de Calidad
+            </a>
+            {% if current_user.puede_ver_costos %}
+            <a href="{{ url_for('costos.index') }}" class="nav-link {% if ep.startswith('costos.') %}active{% endif %}">
+                <i data-lucide="calculator"></i> Costos y Márgenes
+            </a>
+            {% endif %}
+            {% endif %}
+
+            <div class="nav-sep">Seguimiento</div>
+            <a href="{{ url_for('rastreo.lista') }}" class="nav-link {% if ep.startswith('rastreo.') %}active{% endif %}">
+                <i data-lucide="map"></i> Rastrear Pedido
+            </a>
+            <a href="{{ url_for('catalogo.lista') }}" class="nav-link {% if ep.startswith('catalogo.') %}active{% endif %}">
+                <i data-lucide="shopping-bag"></i> Catálogo de Diseños
+            </a>
+            {% if current_user.rol == 'cliente' %}
+            <a href="{{ url_for('solicitudes.lista') }}" class="nav-link {% if ep.startswith('solicitudes.') %}active{% endif %}">
+                <i data-lucide="clipboard-list"></i> Mis Solicitudes
+            </a>
+            <a href="{{ url_for('cotizaciones.lista') }}" class="nav-link {% if ep.startswith('cotizaciones.') %}active{% endif %}">
+                <i data-lucide="file-text"></i> Mis Cotizaciones
+            </a>
+            <a href="{{ url_for('mensajes.lista') }}" class="nav-link {% if ep.startswith('mensajes.') %}active{% endif %}">
+                <i data-lucide="messages-square"></i> Mensajes
+                {% if mensajes_sin_leer %}<span class="nav-badge">{{ mensajes_sin_leer }}</span>{% endif %}
+            </a>
+            {% endif %}
+
+            {% if current_user.rol == 'admin' %}
+            <div class="nav-sep">Administración</div>
+            <a href="{{ url_for('admin.usuarios') }}" class="nav-link {% if ep in ['admin.usuarios', 'admin.editar_usuario'] %}active{% endif %}">
+                <i data-lucide="shield-check"></i> Gestión de Usuarios
+                {% if solicitudes_pendientes %}<span class="nav-badge">{{ solicitudes_pendientes }}</span>{% endif %}
+            </a>
+            <a href="{{ url_for('reportes.index') }}" class="nav-link {% if ep in ['reportes.index'] %}active{% endif %}">
+                <i data-lucide="chart-column"></i> Reportes
+            </a>
+            <a href="{{ url_for('admin.bitacora') }}" class="nav-link {% if ep.startswith('admin.bitacora') %}active{% endif %}">
+                <i data-lucide="scroll-text"></i> Bitácora de Auditoría
+            </a>
+            <a href="{{ url_for('whatsapp.simulador') }}" class="nav-link {% if ep.startswith('whatsapp.') %}active{% endif %}">
+                <i data-lucide="message-circle"></i> Bot de WhatsApp
+            </a>
+            {% endif %}
+
+            <div class="nav-sep">Ayuda</div>
+            <a href="{{ url_for('faq.index') }}" class="nav-link {% if ep.startswith('faq.') %}active{% endif %}">
+                <i data-lucide="help-circle"></i> Preguntas Frecuentes
             </a>
         </nav>
 
         <div class="sidebar__user">
-            {% if current_user.is_authenticated %}
-                <div class="avatar">{{ current_user.nombre[:1] }}</div>
-                <div>
-                    <strong>{{ current_user.nombre }}</strong>
-                    <span>{{ current_user.cargo or current_user.rol }}</span>
-                </div>
-            {% else %}
-                <div class="avatar">?</div>
-                <div>
-                    <strong>Invitado</strong>
-                    <span>Sin sesión iniciada</span>
-                </div>
-            {% endif %}
+            <a href="{{ url_for('auth.perfil') }}" class="avatar avatar--sm" title="Mi perfil">{{ current_user.iniciales }}</a>
+            <div style="flex: 1; min-width: 0;">
+                <a href="{{ url_for('auth.perfil') }}" style="display: block; font-weight: 600; font-size: 14px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ current_user.nombre }}</a>
+                <span style="font-size: 12px; color: rgba(255,255,255,0.55);">{{ current_user.rol_legible }}</span>
+            </div>
+            <a href="{{ url_for('auth.logout') }}" style="color: #f87171;" title="Cerrar Sesión" aria-label="Cerrar sesión"><i data-lucide="log-out"></i></a>
         </div>
     </aside>
+    {% endif %}
 
     <main class="content">
         {% with mensajes = get_flashed_messages(with_categories=true) %}
             {% if mensajes %}
-            <div class="flashes">
+            {% set iconos = {"ok": "circle-check", "warn": "triangle-alert", "danger": "circle-x", "info": "info"} %}
+            <div class="flashes" role="status">
                 {% for categoria, mensaje in mensajes %}
-                    <div class="flash flash--{{ categoria }}">{{ mensaje }}</div>
+                    {% set cat = categoria if categoria in iconos else "info" %}
+                    <div class="flash flash--{{ cat }}"><i data-lucide="{{ iconos[cat] }}"></i> {{ mensaje }}</div>
                 {% endfor %}
             </div>
             {% endif %}
@@ -68,12 +186,42 @@
     <script>
         lucide.createIcons();
 
-        // Cierra los menús de acciones al hacer clic fuera de ellos
-        document.addEventListener("click", (e) => {
-            document.querySelectorAll("details.menu[open]").forEach((menu) => {
-                if (!menu.contains(e.target)) menu.removeAttribute("open");
+        const toggleBtn = document.getElementById('theme-toggle');
+        const root = document.documentElement;
+
+        function pintarIconoTema() {
+            if (!toggleBtn) return;
+            toggleBtn.innerHTML = '<i data-lucide="' + (root.getAttribute('data-theme') === 'dark' ? 'sun' : 'moon') + '"></i>';
+            lucide.createIcons();
+        }
+        pintarIconoTema();
+
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => {
+                if (root.getAttribute('data-theme') === 'dark') {
+                    root.removeAttribute('data-theme');
+                    try { localStorage.setItem('theme', 'light'); } catch (e) {}
+                } else {
+                    root.setAttribute('data-theme', 'dark');
+                    try { localStorage.setItem('theme', 'dark'); } catch (e) {}
+                }
+                pintarIconoTema();
+                document.dispatchEvent(new CustomEvent('ayc:tema'));
+            });
+        }
+
+        /* Cierra los menús <details> al hacer clic fuera */
+        document.addEventListener('click', (e) => {
+            document.querySelectorAll('details.menu[open]').forEach((d) => {
+                if (!d.contains(e.target)) d.removeAttribute('open');
             });
         });
     </script>
+    {% if current_user.is_authenticated %}
+    {% include "asistente/_widget.html" %}
+    <script src="{{ url_for('static', filename='js/asistente.js') }}"></script>
+    <script>lucide.createIcons();</script>
+    {% endif %}
+    {% block scripts %}{% endblock %}
 </body>
 </html>

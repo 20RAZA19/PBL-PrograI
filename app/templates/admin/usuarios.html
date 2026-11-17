@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% from "_macros.html" import boton_accion %}
+{% block title %}Gestión de Usuarios{% endblock %}
+
+{% set clases_estado = {"aprobado": "badge--ok", "pendiente": "badge--warn", "rechazado": "badge--danger"} %}
+{% set clases_rol = {"admin": "badge--brand", "gestor": "badge--info", "ventas": "badge--warn", "cliente": "badge--neutral"} %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Gestión de Usuarios</h1>
+        <p>Aprueba solicitudes de acceso y administra roles del equipo y clientes.</p>
+    </div>
+    <div class="chips-stats">
+        <div class="chip-stat"><strong>{{ stats.total }}</strong> usuarios</div>
+        <div class="chip-stat"><strong>{{ stats.activos }}</strong> con acceso</div>
+        <div class="chip-stat"><strong>{{ stats.por_rol.gestor }}</strong> taller</div>
+        <div class="chip-stat"><strong>{{ stats.por_rol.ventas }}</strong> ventas</div>
+        <div class="chip-stat"><strong>{{ stats.por_rol.cliente }}</strong> clientes</div>
+    </div>
+</div>
+
+<div class="topbar">
+    <div class="tabs">
+        <a href="{{ url_for('admin.usuarios', vista='pendientes') }}" class="{% if vista == 'pendientes' %}active{% endif %}">
+            <i data-lucide="user-round-plus" style="width: 16px;"></i> Solicitudes
+            {% if stats.pendientes %}<span class="nav-badge">{{ stats.pendientes }}</span>{% endif %}
+        </a>
+        <a href="{{ url_for('admin.usuarios', vista='todos') }}" class="{% if vista == 'todos' %}active{% endif %}">
+            <i data-lucide="users" style="width: 16px;"></i> Todos los usuarios
+        </a>
+    </div>
+    {% if vista == 'todos' %}
+    <div class="flex flex--wrap grow" style="justify-content: flex-end;">
+        <form class="search" method="get" style="max-width: 360px;">
+            <i data-lucide="search"></i>
+            <input type="text" name="q" value="{{ q }}" placeholder="Nombre, correo o cargo...">
+            <input type="hidden" name="vista" value="todos">
+            {% if rol %}<input type="hidden" name="rol" value="{{ rol }}">{% endif %}
+        </form>
+        <form method="get" class="filtro">
+            <i data-lucide="filter"></i>
+            <input type="hidden" name="vista" value="todos">
+            {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+            <select name="rol" onchange="this.form.submit()">
+                <option value="">Todos los roles</option>
+                {% for clave, nombre in ROLES.items() %}
+                    <option value="{{ clave }}" {% if rol == clave %}selected{% endif %}>{{ nombre }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+    {% endif %}
+</div>
+
+{% if vista == 'pendientes' %}
+<section class="panel">
+    <div class="panel__head">
+        <div>
+            <h2>Solicitudes Pendientes</h2>
+            <p>Usuarios que pidieron un rol interno (Taller, Ventas o Administración)</p>
+        </div>
+    </div>
+    {% if usuarios %}
+    <div class="solicitudes">
+        {% for u in usuarios %}
+        <article class="solicitud">
+            <div class="usuario-celda">
+                <span class="avatar">{{ u.iniciales }}</span>
+                <div class="grow">
+                    <strong>{{ u.nombre }}</strong>
+                    <span>{{ u.email }}</span>
+                </div>
+            </div>
+            <div class="flex flex--between small">
+                <span class="muted">Solicita</span>
+                <span class="badge {{ clases_rol.get(u.rol, 'badge--neutral') }}">{{ u.rol_legible }}</span>
+            </div>
+            {% if u.cliente %}
+            <div class="flex flex--between small">
+                <span class="muted">Empresa</span>
+                <strong title="Confirma que esta persona trabaja en la empresa antes de aprobar: verá sus pedidos y cotizaciones">{{ u.cliente.nombre }}</strong>
+            </div>
+            {% endif %}
+            <div class="flex flex--between small">
+                <span class="muted">Registrado</span>
+                <span>{{ u.creado_en | fecha_es }} · {{ u.creado_en | hora }}</span>
+            </div>
+            <div class="flex" style="gap: 8px;">
+                {{ boton_accion(accion_form, url_for('admin.aprobar', usuario_id=u.id, volver=request.full_path), "Aprobar", "check", "btn btn--primary btn--sm") }}
+                {{ boton_accion(accion_form, url_for('admin.rechazar', usuario_id=u.id, volver=request.full_path), "Rechazar", "x", "btn btn--danger btn--sm",
+                                confirmar="¿Rechazar la solicitud de " ~ u.nombre ~ "?") }}
+                <a href="{{ url_for('admin.editar_usuario', usuario_id=u.id) }}" class="btn btn--outline btn--sm" style="margin-left: auto;"><i data-lucide="pencil"></i> Editar</a>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="vacio">
+        <i data-lucide="inbox" style="width: 48px; height: 48px; opacity: 0.5; margin-bottom: 16px;"></i>
+        No hay solicitudes pendientes. ¡Todo al día!
+    </div>
+    {% endif %}
+</section>
+{% else %}
+<section class="panel">
+    <div class="tabla-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Usuario</th>
+                    <th>Rol</th>
+                    <th>Cargo / Empresa</th>
+                    <th>Estado</th>
+                    <th>Alta</th>
+                    <th style="text-align: right;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in usuarios %}
+                <tr>
+                    <td>
+                        <div class="usuario-celda">
+                            <span class="avatar avatar--sm">{{ u.iniciales }}</span>
+                            <div>
+                                <strong>{{ u.nombre }}{% if u.id == current_user.id %} <span class="badge badge--neutral">Tú</span>{% endif %}</strong>
+                                <span>{{ u.email }}</span>
+                            </div>
+                        </div>
+                    </td>
+                    <td><span class="badge {{ clases_rol.get(u.rol, 'badge--neutral') }}">{{ u.rol_legible }}</span></td>
+                    <td>
+                        {{ u.cargo or "—" }}
+                        {% if u.cliente %}<br><span class="muted small">{{ u.cliente.nombre }}</span>{% endif %}
+                    </td>
+                    <td>
+                        <span class="badge {{ clases_estado.get(u.estado_permiso, 'badge--neutral') }}">{{ ESTADOS_PERMISO.get(u.estado_permiso, u.estado_permiso) }}</span>
+                        {% if not u.activo %}<span class="badge badge--danger">Inactivo</span>{% endif %}
+                    </td>
+                    <td class="small muted">{{ u.creado_en | fecha_es }}</td>
+                    <td>
+                        <div class="acciones-fila">
+                            {% if u.estado_permiso == 'pendiente' %}
+                                {{ boton_accion(accion_form, url_for('admin.aprobar', usuario_id=u.id, volver=request.full_path), "", "check", "btn btn--ok btn--sm", titulo="Aprobar") }}
+                            {% endif %}
+                            <a href="{{ url_for('admin.editar_usuario', usuario_id=u.id) }}" class="btn btn--outline btn--sm"><i data-lucide="pencil"></i> Editar</a>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="vacio">No se encontraron usuarios.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+{% endblock %}

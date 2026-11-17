@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import boton_accion %}
 {% block title %}{{ tela.nombre }}{% endblock %}
 
 {% block content %}
@@ -12,17 +13,22 @@
     <div>
         <a href="{{ url_for('telas.lista') }}" class="volver"><i data-lucide="arrow-left"></i> Materia Prima</a>
         <div class="detalle-head">
+            {% if tela.imagen %}
+            <img class="miniatura" style="width: 64px; height: 64px; border-radius: 14px;" src="{{ url_for('static', filename=tela.imagen) }}" alt="Foto de {{ tela.nombre }}">
+            {% else %}
             <span class="muestra muestra--grande" style="background: {{ tela.color_hex }}"></span>
+            {% endif %}
             <div>
                 <h1>{{ tela.nombre }}</h1>
                 <p>
-                    {{ tela.tipo }} · {{ tela.codigo_pantone or "Sin código Pantone" }}
+                    {% if tela.codigo %}<span class="chip">{{ tela.codigo }}</span> · {% endif %}
+                    {{ tela.categoria }} · {{ tela.tipo }} · {{ tela.codigo_pantone or "Sin código Pantone" }}
                     {% if not tela.activo %} · <strong>Desactivada</strong>{% endif %}
                 </p>
             </div>
         </div>
     </div>
-    {% if tela.activo %}
+    {% if tela.activo and current_user.puede_editar_inventario %}
     <div class="page-head__acciones">
         <a href="{{ url_for('telas.movimiento', tela_id=tela.id, tipo='entrada') }}" class="btn btn--primary">
             <i data-lucide="arrow-down-to-line"></i> Entrada
@@ -39,16 +45,28 @@
 
 <section class="info-grid">
     <div class="info">
-        <span>Metros disponibles</span>
-        <strong>{{ tela.metros_disponibles | metros }} mts</strong>
+        <span>Disponible ({{ tela.unidad_medida | lower }})</span>
+        <strong>{{ tela.metros_disponibles | metros }} {{ tela.unidad_medida | unidad_corta }}</strong>
     </div>
     <div class="info">
         <span>Stock mínimo</span>
-        <strong>{{ tela.stock_minimo | metros }} mts</strong>
+        <strong>{{ tela.stock_minimo | metros }} {{ tela.unidad_medida | unidad_corta }}</strong>
     </div>
     <div class="info">
         <span>Estado</span>
         <strong><span class="badge {{ clases_estado[tela.estado] }}">{{ tela.estado }}</span></strong>
+    </div>
+    <div class="info">
+        <span>Costo por unidad</span>
+        <strong>{{ tela.costo_unitario | dinero if tela.tiene_costo else "Sin registrar" }}</strong>
+    </div>
+    <div class="info">
+        <span>Valor en bodega</span>
+        <strong>{{ tela.valor_inventario | dinero }}</strong>
+    </div>
+    <div class="info">
+        <span>Proveedor habitual</span>
+        <strong>{% if tela.proveedor %}<a href="{{ url_for('contactos.detalle', tipo='proveedores', registro_id=tela.proveedor.id) }}" style="color: var(--primary);">{{ tela.proveedor.nombre }}</a>{% else %}—{% endif %}</strong>
     </div>
     <div class="info">
         <span>Última actualización</span>
@@ -56,11 +74,19 @@
     </div>
 </section>
 
+{% if tela.imagen %}
+<section class="panel">
+    <div class="panel__head"><div><h2>Muestra</h2><p>Foto de referencia para identificarla en bodega</p></div>
+        <span class="chip">{{ tela.codigo_pantone or tela.color_hex }}</span></div>
+    <div class="panel__body"><img class="foto-muestra" src="{{ url_for('static', filename=tela.imagen) }}" alt="Muestra de {{ tela.nombre }}"></div>
+</section>
+{% endif %}
+
 <section class="panel">
     <div class="panel__head">
         <div>
             <h2>Historial de Movimientos</h2>
-            <p>Entradas y salidas registradas de esta tela</p>
+            <p>Entradas y salidas registradas · el historial no se puede eliminar</p>
         </div>
     </div>
     <div class="tabla-wrap">
@@ -69,7 +95,7 @@
                 <tr>
                     <th>Fecha</th>
                     <th>Tipo</th>
-                    <th>Metros</th>
+                    <th>Cantidad</th>
                     <th>Motivo</th>
                     <th>Registrado por</th>
                 </tr>
@@ -84,10 +110,13 @@
                         </span>
                     </td>
                     <td class="{{ 'positivo' if m.tipo == 'entrada' else 'negativo' }}">
-                        {{ "+" if m.tipo == "entrada" else "−" }}{{ m.metros | metros }} mts
+                        {{ "+" if m.tipo == "entrada" else "−" }}{{ (m.metros or m.cantidad) | metros }} {{ tela.unidad_medida | unidad_corta }}
                     </td>
-                    <td>{{ m.motivo or "—" }}</td>
-                    <td>{{ m.usuario.nombre }}</td>
+                    <td>
+                        {{ m.motivo or "—" }}
+                        {% if m.pedido %} · <a href="{{ url_for('rastreo.detalle', folio=m.pedido.folio) }}" style="color: var(--primary);">{{ m.pedido.folio }}</a>{% endif %}
+                    </td>
+                    <td>{{ m.usuario.nombre if m.usuario else "Sistema" }}</td>
                 </tr>
                 {% else %}
                 <tr><td colspan="5" class="vacio">Esta tela aún no tiene movimientos.</td></tr>
@@ -97,11 +126,11 @@
     </div>
 </section>
 
-{% if tela.activo %}
-<form method="post" action="{{ url_for('telas.desactivar', tela_id=tela.id) }}"
-      onsubmit="return confirm('¿Desactivar esta tela? Dejará de aparecer en el inventario, pero su historial se conserva.');">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="btn btn--danger"><i data-lucide="ban"></i> Desactivar tela</button>
-</form>
+{% if not current_user.puede_editar_inventario %}
+{% elif tela.activo %}
+    {{ boton_accion(accion_form, url_for('telas.desactivar', tela_id=tela.id), "Desactivar insumo", "ban", "btn btn--danger",
+                    confirmar="¿Desactivar este insumo? Dejará de aparecer en el inventario, pero su historial se conserva.") }}
+{% else %}
+    {{ boton_accion(accion_form, url_for('telas.reactivar', tela_id=tela.id), "Reactivar insumo", "rotate-ccw", "btn btn--outline") }}
 {% endif %}
 {% endblock %}

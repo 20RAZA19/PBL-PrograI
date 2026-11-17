@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Cotizaciones{% endblock %}
+
+{% set clases_estado = {"borrador": "badge--neutral", "enviada": "badge--info", "aceptada": "badge--ok", "rechazada": "badge--danger"} %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>{{ 'Mis Cotizaciones' if current_user.rol == 'cliente' else 'Cotizaciones' }}</h1>
+        <p>
+            {% if current_user.rol == 'cliente' %}
+                Propuestas de precio que Arte y Color preparó para tu empresa. Puedes aceptarlas o rechazarlas desde aquí.
+            {% else %}
+                Propuestas de precio en PDF para clientes. Al ser aceptadas se convierten en pedidos con un clic.
+            {% endif %}
+        </p>
+    </div>
+    {% if current_user.puede_cotizar %}
+    <div class="page-head__acciones">
+        <a href="{{ url_for('cotizaciones.nueva') }}" class="btn btn--primary"><i data-lucide="file-plus"></i> Nueva Cotización</a>
+    </div>
+    {% endif %}
+</div>
+
+{% if sol_cotizadas %}
+<section class="panel">
+    <div class="panel__head">
+        <div>
+            <h2>Cotizaciones de tus solicitudes</h2>
+            <p>Prendas que propusiste y ya fueron aprobadas, con su precio por la cantidad solicitada. Decide antes de que venzan</p>
+        </div>
+    </div>
+    <div class="lista-compacta">
+        {% for s in sol_cotizadas %}
+        <a href="{{ url_for('solicitudes.detalle', solicitud_id=s.id) }}">
+            <span class="kpi__icon"><i data-lucide="clipboard-list"></i></span>
+            <div class="grow"><strong>{{ s.folio }} · {{ s.resumen_prendas }}</strong>
+                <small>{{ "{:,}".format(s.total_prendas) }} prendas · {{ s.total | dinero }} + IVA
+                    {% if s.vigente %} · vence el {{ s.vence_en | fecha_es }}{% endif %}</small></div>
+            {% if s.vencida %}<span class="badge badge--warn">Vencida</span>
+            {% else %}<span class="badge badge--brand">Acéptala o declínala</span>{% endif %}
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{% if resumen %}
+<section class="kpis">
+    <div class="kpi">
+        <div class="kpi__head">En espera de respuesta <span class="kpi__icon"><i data-lucide="send"></i></span></div>
+        <p class="kpi__valor">{{ resumen.abiertas }} <small>cotizaciones</small></p>
+        <div class="kpi__pie"><span class="badge badge--info">{{ resumen.monto_abierto | dinero }}</span> por cerrar</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi__head">Tasa de cierre <span class="kpi__icon"><i data-lucide="handshake"></i></span></div>
+        <p class="kpi__valor">{{ (resumen.conversion ~ '%') if resumen.conversion is not none else '—' }}</p>
+        <div class="kpi__pie">Aceptadas sobre respondidas</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi__head">Monto aceptado <span class="kpi__icon"><i data-lucide="badge-dollar-sign"></i></span></div>
+        <p class="kpi__valor">{{ resumen.monto_aceptado | dinero }}</p>
+        <div class="kpi__pie"><span class="badge badge--ok">Ganado</span> IVA incluido</div>
+    </div>
+</section>
+{% endif %}
+
+<div class="topbar">
+    <div class="tabs">
+        <a href="{{ url_for('cotizaciones.lista', q=q or None) }}" class="{% if not estado %}active{% endif %}">Todas</a>
+        {% for clave, nombre in estados.items() %}
+            {% if not (clave == 'borrador' and current_user.rol == 'cliente') %}
+            <a href="{{ url_for('cotizaciones.lista', estado=clave, q=q or None) }}" class="{% if estado == clave %}active{% endif %}">{{ nombre.split()[0] }}{{ 's' if not nombre.endswith('r') else 'es' }}</a>
+            {% endif %}
+        {% endfor %}
+    </div>
+    <form class="search" method="get">
+        <i data-lucide="search"></i>
+        <input type="text" name="q" value="{{ q }}" placeholder="Folio o cliente…">
+        {% if estado %}<input type="hidden" name="estado" value="{{ estado }}">{% endif %}
+    </form>
+</div>
+
+<section class="panel">
+    <div class="tabla-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Folio</th>
+                    {% if current_user.es_staff %}<th>Cliente</th>{% endif %}
+                    <th>Fecha</th>
+                    <th class="num">Prendas</th>
+                    <th class="num">Total</th>
+                    <th>Estado</th>
+                    <th>Vigencia</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in cotizaciones %}
+                <tr>
+                    <td><a href="{{ url_for('cotizaciones.detalle', cotizacion_id=c.id) }}" class="tela"><span class="kpi__icon"><i data-lucide="file-text"></i></span><strong>{{ c.folio }}</strong></a></td>
+                    {% if current_user.es_staff %}<td>{{ c.cliente.nombre }}</td>{% endif %}
+                    <td>{{ c.fecha | fecha_es }}</td>
+                    <td class="num">{{ "{:,}".format(c.total_prendas) }}</td>
+                    <td class="num"><strong>{{ c.total | dinero }}</strong></td>
+                    <td>
+                        {% if c.vencida %}<span class="badge badge--warn">Vencida</span>
+                        {% else %}<span class="badge {{ clases_estado.get(c.estado, 'badge--neutral') }}">{{ c.estado_legible }}</span>{% endif %}
+                        {% if c.pedidos %}<span class="badge badge--brand" title="Ya generó pedidos">{{ c.pedidos | length }} pedido{{ 's' if c.pedidos | length != 1 }}</span>{% endif %}
+                    </td>
+                    <td class="muted small">
+                        {% if c.estado in ('borrador', 'enviada') and not c.vencida %}Hasta {{ c.fecha_vencimiento | fecha_es }}{% elif c.respondida_en %}Respondida {{ c.respondida_en | fecha_es }}{% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="vacio">
+                    {% if current_user.rol == 'cliente' %}Aún no tienes cotizaciones.{% else %}No hay cotizaciones con ese filtro.{% endif %}
+                </td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

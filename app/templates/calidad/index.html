@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Control de Calidad{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Control de Calidad</h1>
+        <p>Defectos y reprocesos por línea de producción. Meta: máximo {{ "%g" | format(meta) }}% de prendas con defecto por línea.</p>
+    </div>
+    <div class="page-head__acciones">
+        <div class="tabs">
+            {% for d, etiqueta in [(30, '30 días'), (90, '90 días'), (365, '1 año')] %}
+            <a href="{{ url_for('calidad.index', dias=d, estado=estado or None, linea=linea or None) }}" class="{% if dias == d %}active{% endif %}">{{ etiqueta }}</a>
+            {% endfor %}
+        </div>
+        {% if current_user.puede_registrar_calidad %}
+        <a href="{{ url_for('calidad.nuevo') }}" class="btn btn--primary"><i data-lucide="plus"></i> Registrar defecto</a>
+        {% endif %}
+    </div>
+</div>
+
+<section class="kpis">
+    <div class="kpi">
+        <div class="kpi__head">Prendas afectadas <span class="kpi__icon"><i data-lucide="shirt"></i></span></div>
+        <p class="kpi__valor">{{ resumen.afectadas }} <small>prendas</small></p>
+        <div class="kpi__pie"><span class="badge badge--info">{{ resumen.reprocesos }} reprocesadas</span> últimos {{ dias }} días</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi__head">Casos abiertos <span class="kpi__icon"><i data-lucide="clipboard-list"></i></span></div>
+        <p class="kpi__valor">{{ resumen.abiertos }} <small>sin resolver</small></p>
+        <div class="kpi__pie">{% if resumen.abiertos %}<span class="badge badge--warn">Pendientes</span>{% else %}<span class="badge badge--ok">Al día</span>{% endif %} acción correctiva</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi__head">Línea más crítica <span class="kpi__icon"><i data-lucide="factory"></i></span></div>
+        {% if resumen.peor and resumen.peor.tasa %}
+        <p class="kpi__valor">{{ resumen.peor.tasa }}% <small>{{ resumen.peor.linea }}</small></p>
+        <div class="kpi__pie"><span class="badge {{ {'ok': 'badge--ok', 'warn': 'badge--warn', 'danger': 'badge--danger'}.get(resumen.peor.nivel, 'badge--neutral') }}">{{ 'Dentro de la meta' if resumen.peor.nivel == 'ok' else 'Sobre la meta' }}</span> {{ resumen.peor.afectadas }} de {{ "{:,}".format(resumen.peor.producidas) }}</div>
+        {% else %}
+        <p class="kpi__valor">0%</p><div class="kpi__pie"><span class="badge badge--ok">Sin defectos</span></div>
+        {% endif %}
+    </div>
+</section>
+
+<div class="dash-grid">
+    <section class="panel span-7">
+        <div class="panel__head"><div><h2>Tasa de defectos por línea</h2><p>Prendas afectadas ÷ prendas que pasaron por la línea · la marca indica la meta</p></div></div>
+        <div class="tabla-wrap">
+            <table class="tabla-compacta">
+                <thead><tr><th>Línea</th><th class="num">Producidas</th><th class="num">Afectadas</th><th style="width: 34%;">Tasa</th><th></th></tr></thead>
+                <tbody>
+                    {% set escala = [meta * 3, (lineas | map(attribute='tasa') | reject('none') | list | max) if (lineas | map(attribute='tasa') | reject('none') | list) else 0] | max %}
+                    {% for l in lineas %}
+                    <tr>
+                        <td><a href="{{ url_for('calidad.index', dias=dias, linea=l.linea) }}"><strong>{{ l.linea }}</strong></a>{% if l.abiertos %}<br><span class="muted small">{{ l.abiertos }} abierto{{ 's' if l.abiertos != 1 }}</span>{% endif %}</td>
+                        <td class="num">{{ "{:,}".format(l.producidas) }}</td>
+                        <td class="num">{{ l.afectadas }}</td>
+                        <td>
+                            <div class="barra-meta" title="Meta {{ '%g' | format(meta) }}%">
+                                <div class="barra-meta__relleno barra-meta__relleno--{{ l.nivel }}" style="width: {{ (((l.tasa or 0) / escala * 100) if escala else 0) | round | int }}%;"></div>
+                                <span class="barra-meta__meta" style="left: {{ (meta / escala * 100) | round | int if escala else 0 }}%;"></span>
+                            </div>
+                        </td>
+                        <td class="num"><strong class="{{ 'negativo' if l.nivel == 'danger' else '' }}">{{ (l.tasa ~ '%') if l.tasa is not none else '—' }}</strong></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="panel span-5">
+        <div class="panel__head"><div><h2>Defectos más frecuentes</h2><p>Prendas afectadas por tipo · {{ dias }} días</p></div></div>
+        <div class="panel__body stock-lista">
+            {% set maximo = (por_categoria[0][1] if por_categoria else 1) %}
+            {% for nombre, cantidad in por_categoria %}
+            <div>
+                <div class="stock-fila__head"><span>{{ nombre }}</span><strong>{{ cantidad }}</strong></div>
+                <div class="pista"><div class="pista__relleno pista__relleno--bajo" style="width: {{ (cantidad / maximo * 100) | round | int }}%;"></div></div>
+            </div>
+            {% else %}<p class="vacio">Sin defectos registrados en el periodo.</p>{% endfor %}
+        </div>
+    </section>
+</div>
+
+<section class="panel">
+    <div class="panel__head">
+        <div><h2>Registros</h2><p>{% if estado == 'abiertos' %}Casos sin resolver{% else %}Últimos {{ dias }} días{% endif %}{% if linea %} · línea de {{ linea }}{% endif %}</p></div>
+        <div class="tabs">
+            <a href="{{ url_for('calidad.index', dias=dias, linea=linea or None) }}" class="{% if estado != 'abiertos' %}active{% endif %}">Todos</a>
+            <a href="{{ url_for('calidad.index', dias=dias, estado='abiertos', linea=linea or None) }}" class="{% if estado == 'abiertos' %}active{% endif %}">Abiertos {% if resumen.abiertos %}<span class="badge badge--warn">{{ resumen.abiertos }}</span>{% endif %}</a>
+            {% if linea %}<a href="{{ url_for('calidad.index', dias=dias, estado=estado or None) }}">Quitar filtro «{{ linea }}» ✕</a>{% endif %}
+        </div>
+    </div>
+    <div class="tabla-wrap">
+        <table class="tabla-compacta">
+            <thead><tr><th>Fecha</th><th>Pedido</th><th>Línea</th><th>Defecto</th><th class="num">Prendas</th><th>Acción correctiva</th><th>Estado</th></tr></thead>
+            <tbody>
+                {% for r in registros %}
+                <tr>
+                    <td>{{ r.fecha | fecha_es }}<br><span class="muted small">{{ r.usuario.nombre if r.usuario else "" }}</span></td>
+                    <td><a href="{{ url_for('rastreo.detalle', folio=r.pedido.folio) }}" style="color: var(--primary); font-weight: 600;">{{ r.pedido.folio }}</a><br><span class="muted small">{{ r.pedido.cliente.nombre }}</span></td>
+                    <td>{{ r.linea }}</td>
+                    <td class="texto-corto"><strong>{{ r.categoria }}</strong> <span class="badge {{ 'badge--info' if r.tipo == 'reproceso' else 'badge--warn' }}">{{ r.tipo_legible }}</span>{% if r.descripcion %}<br><span class="muted small">{{ r.descripcion }}</span>{% endif %}</td>
+                    <td class="num">{{ r.cantidad }}</td>
+                    <td class="texto-corto small">{{ r.accion_correctiva or "—" }}</td>
+                    <td>
+                        {% if r.resuelto %}
+                            <span class="badge badge--ok">Resuelto</span>{% if r.resuelto_en %}<br><span class="muted small">{{ r.resuelto_en | fecha_es }}</span>{% endif %}
+                        {% elif current_user.puede_registrar_calidad %}
+                            <details class="menu">
+                                <summary class="btn btn--outline btn--sm">Resolver</summary>
+                                <div class="menu__lista" style="min-width: 300px; padding: 14px;">
+                                    <form method="post" action="{{ url_for('calidad.resolver', registro_id=r.id) }}" class="form-inline" style="display: grid; gap: 10px;">
+                                        {{ resolver_form.hidden_tag() }}
+                                        <input type="hidden" name="volver" value="{{ request.full_path }}">
+                                        <label class="small" for="ac{{ r.id }}">Acción correctiva</label>
+                                        <textarea id="ac{{ r.id }}" name="accion_correctiva" class="input" rows="3" placeholder="Ej. Se recosieron las prendas y se ajustó la tensión de la máquina 4.">{{ r.accion_correctiva or "" }}</textarea>
+                                        <button type="submit" class="btn btn--primary btn--sm"><i data-lucide="check"></i> Marcar resuelto</button>
+                                    </form>
+                                </div>
+                            </details>
+                        {% else %}<span class="badge badge--warn">Abierto</span>{% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="vacio">No hay registros con ese filtro.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

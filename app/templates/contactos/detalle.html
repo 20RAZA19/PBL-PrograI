@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo, badge_pedido, badge_entrega %}
+{% block title %}{{ registro.nombre }}{% endblock %}
+
+{% set clases_nota = {"comunicacion": "badge--info", "acuerdo": "badge--ok", "requerimiento": "badge--warn"} %}
+
+{% block content %}
+<a href="{{ url_for('contactos.lista', tab=tipo) }}" class="volver"><i data-lucide="arrow-left"></i> Directorio de Contactos</a>
+
+<div class="page-head">
+    <div class="detalle-head">
+        <span class="avatar avatar--lg">{{ registro.nombre | iniciales }}</span>
+        <div>
+            <h1>{{ registro.nombre }}</h1>
+            <p>{{ cfg.singular | capitalize }}{% if tipo == 'proveedores' and registro.rubro %} · {{ registro.rubro }}{% endif %} · Alta {{ registro.creado_en | fecha_es }}</p>
+        </div>
+    </div>
+    <div class="page-head__acciones">
+        {% if tipo == 'clientes' and current_user.puede_cotizar %}
+        <a href="{{ url_for('cotizaciones.nueva', cliente_id=registro.id) }}" class="btn btn--primary"><i data-lucide="file-text"></i> Nueva cotización</a>
+        {% endif %}
+        {% if current_user.puede_gestionar_contactos %}
+        <a href="{{ url_for('contactos.editar', tipo=tipo, registro_id=registro.id) }}" class="btn btn--outline"><i data-lucide="pencil"></i> Editar</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="layout-2">
+    <div>
+        <section class="panel">
+            <div class="panel__head">
+                <div>
+                    <h2>Historial de Notas</h2>
+                    <p>Comunicación, acuerdos y requerimientos · no se pueden editar ni borrar</p>
+                </div>
+                <span class="badge badge--neutral">{{ registro.historial | length }}</span>
+            </div>
+
+            {% if nota_form %}
+            <form method="post" class="form" novalidate style="border-bottom: 1px solid var(--border-color);">
+                {{ nota_form.hidden_tag() }}
+                <div class="form__grid">
+                    {{ campo(nota_form.tipo) }}
+                    {{ campo(nota_form.pedido_id) }}
+                    {{ campo(nota_form.contenido, "campo--full", rows="3",
+                             placeholder="Ej. El cliente confirmó cambio de color del cuello a blanco." if tipo == 'clientes' else "Ej. Precio acordado de $3.10/m para pedidos mayores a 500 m.") }}
+                </div>
+                <div class="form__acciones" style="margin-top: 16px; padding-top: 16px;">
+                    {{ nota_form.submit(class_="btn btn--primary") }}
+                </div>
+            </form>
+            {% endif %}
+
+            {% if registro.historial %}
+            <ol class="timeline">
+                {% for n in registro.historial %}
+                <li>
+                    <span class="timeline__punto"></span>
+                    <div class="timeline__head">
+                        <span class="flex" style="gap: 8px;">
+                            <span class="badge {{ clases_nota.get(n.tipo, 'badge--neutral') }}">{{ n.tipo_legible }}</span>
+                            {% if n.pedido %}<a class="chip" href="{{ url_for('rastreo.detalle', folio=n.pedido.folio) }}">{{ n.pedido.folio }}</a>{% endif %}
+                        </span>
+                        <time datetime="{{ n.fecha.isoformat() }}">{{ n.fecha | fecha_es }} · {{ n.fecha | hora }}</time>
+                    </div>
+                    <div class="timeline__nota" style="white-space: pre-line;">{{ n.contenido }}</div>
+                    <p class="small">Registrado por {{ n.usuario.nombre if n.usuario else "Sistema" }}</p>
+                </li>
+                {% endfor %}
+            </ol>
+            {% else %}
+            <p class="vacio">Aún no hay notas registradas.</p>
+            {% endif %}
+        </section>
+
+        {% if tipo == 'clientes' %}
+        <section class="panel">
+            <div class="panel__head">
+                <div>
+                    <h2>Pedidos del Cliente</h2>
+                    <p>{{ pedidos | length }} {{ 'orden registrada' if pedidos | length == 1 else 'órdenes registradas' }}</p>
+                </div>
+            </div>
+            <div class="lista-compacta">
+                {% for p in pedidos %}
+                <a href="{{ url_for('rastreo.detalle', folio=p.folio) }}">
+                    <span class="kpi__icon"><i data-lucide="package"></i></span>
+                    <div class="grow">
+                        <strong>{{ p.folio }} · {{ p.modelo_prenda }}</strong>
+                        <small>{{ p.cantidad }} und. · Límite {{ p.fecha_limite | fecha_es }}</small>
+                    </div>
+                    {{ badge_pedido(p) }}
+                    {{ badge_entrega(p) }}
+                </a>
+                {% else %}
+                <p class="vacio">Este cliente aún no tiene pedidos.</p>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+    </div>
+
+    <div>
+        <section class="panel">
+            <div class="panel__head"><div><h2>Datos de Contacto</h2></div></div>
+            <div class="panel__body">
+                <dl class="ficha" style="border: 0; padding: 0; gap: 0;">
+                    <div class="ficha__fila"><dt>Contacto</dt><dd>{{ registro.contacto or "—" }}</dd></div>
+                    <div class="ficha__fila"><dt>Teléfono</dt><dd>{% if registro.telefono %}<a href="tel:{{ registro.telefono }}" style="color: var(--primary);">{{ registro.telefono }}</a>{% else %}—{% endif %}</dd></div>
+                    <div class="ficha__fila"><dt>Correo</dt><dd>{% if registro.email %}<a href="mailto:{{ registro.email }}" style="color: var(--primary);">{{ registro.email }}</a>{% else %}—{% endif %}</dd></div>
+                    {% if tipo == 'clientes' %}
+                    <div class="ficha__fila"><dt>Usuarios del portal</dt><dd>{{ registro.usuarios | length }}</dd></div>
+                    <div class="ficha__fila"><dt>Diseños</dt><dd>{{ registro.disenos | length }}</dd></div>
+                    {% endif %}
+                </dl>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel__head">
+                <div>
+                    <h2>{{ 'Requerimientos generales' if tipo == 'clientes' else 'Acuerdos de materia prima' }}</h2>
+                    <p>{{ 'Especificaciones estándar del cliente' if tipo == 'clientes' else 'Condiciones pactadas con el proveedor' }}</p>
+                </div>
+            </div>
+            <div class="panel__body" style="white-space: pre-line; color: var(--text-muted); font-size: 14px;">{{ (registro.notas_acuerdos if tipo == 'proveedores' else registro.notas) or 'Sin información registrada.' }}</div>
+        </section>
+    </div>
+</div>
+{% endblock %}

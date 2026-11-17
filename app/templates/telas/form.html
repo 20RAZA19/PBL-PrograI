@@ -7,21 +7,46 @@
     <div>
         <a href="{{ volver }}" class="volver"><i data-lucide="arrow-left"></i> Volver</a>
         <h1>{{ titulo }}</h1>
+        <p>Los colores y códigos Pantone no pueden repetirse dentro de una misma categoría.</p>
     </div>
 </div>
 
 <section class="panel panel--form">
-    <form method="post" class="form" novalidate>
+    <form method="post" class="form" enctype="multipart/form-data" novalidate>
         {{ form.hidden_tag() }}
         <div class="form__grid">
             {{ campo(form.nombre, "campo--full", placeholder="Ej. Algodón Pima Verde Gras") }}
+            {{ campo(form.categoria) }}
+            {{ campo(form.unidad_medida) }}
             {{ campo(form.tipo) }}
             {{ campo(form.codigo_pantone, placeholder="Ej. Pantone 348 C") }}
-            {{ campo(form.color_hex, type="color") }}
-            {{ campo(form.stock_minimo) }}
+            <div class="campo">
+                {{ form.color_hex.label }}
+                <div class="flex" style="gap: 10px;">
+                    {{ form.color_hex(type="color", class_="input" ~ (" input--error" if form.color_hex.errors else ""), style="width: 70px; flex-shrink: 0;") }}
+                    <input type="text" id="color-texto" class="input mono" value="{{ (form.color_hex.data or '#CCCCCC') | upper }}" maxlength="7" aria-label="Código hexadecimal">
+                </div>
+                <small class="ayuda">{{ form.color_hex.description }}</small>
+                {% for error in form.color_hex.errors %}<small class="error">{{ error }}</small>{% endfor %}
+            </div>
+            {{ campo(form.stock_minimo, step="0.01", min="0") }}
             {% if "metros_iniciales" in form %}
-                {{ campo(form.metros_iniciales) }}
+                {{ campo(form.metros_iniciales, step="0.01", min="0") }}
             {% endif %}
+            {{ campo(form.costo_unitario, step="0.01", min="0", placeholder="Ej. 3.10") }}
+            {{ campo(form.proveedor_id) }}
+            <div class="campo campo--full">
+                {{ form.imagen.label }}
+                {% if tela and tela.imagen %}
+                <div class="foto-actual">
+                    <img src="{{ url_for('static', filename=tela.imagen) }}" alt="Foto actual">
+                    <label class="small flex" style="gap: 6px;">{{ form.quitar_imagen() }} {{ form.quitar_imagen.label.text }}</label>
+                </div>
+                {% endif %}
+                {{ form.imagen(class_="input" ~ (" input--error" if form.imagen.errors else ""), accept="image/png,image/jpeg,image/webp,image/gif") }}
+                <small class="ayuda">Foto de la tela o del avío para reconocerlo en bodega · máximo 5 MB.</small>
+                {% for e in form.imagen.errors %}<small class="error">{{ e }}</small>{% endfor %}
+            </div>
         </div>
         <div class="form__acciones">
             <a href="{{ volver }}" class="btn btn--outline">Cancelar</a>
@@ -29,4 +54,33 @@
         </div>
     </form>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        const defaults = {{ defaults | tojson }};
+        const categoria = document.getElementById('{{ form.categoria.id }}');
+        const unidad = document.getElementById('{{ form.unidad_medida.id }}');
+        const minimo = document.getElementById('{{ form.stock_minimo.id }}');
+        const color = document.getElementById('{{ form.color_hex.id }}');
+        const texto = document.getElementById('color-texto');
+
+        // Valores sugeridos por tipo de material (solo si el usuario no los ha tocado)
+        let tocado = false;
+        [unidad, minimo].forEach((el) => el.addEventListener('input', () => { tocado = true; }));
+        categoria.addEventListener('change', () => {
+            const d = defaults[categoria.value];
+            if (!d || tocado) return;
+            unidad.value = d.unidad;
+            minimo.value = d.minimo;
+        });
+
+        // Sincroniza el selector de color con el campo de texto hexadecimal
+        color.addEventListener('input', () => { texto.value = color.value.toUpperCase(); });
+        texto.addEventListener('input', () => {
+            if (/^#[0-9A-Fa-f]{6}$/.test(texto.value)) color.value = texto.value;
+        });
+    })();
+</script>
 {% endblock %}

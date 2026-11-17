@@ -1,0 +1,25 @@
+{# Tarjeta de diseño. Espera la variable `d` (Diseno). #}
+<a class="diseno-card" href="{{ url_for('catalogo.detalle', diseno_id=d.id) }}">
+    <div class="diseno-card__img">
+        {% if d.imagen %}
+            <img src="{{ url_for('static', filename=d.imagen) }}" alt="{{ d.nombre }}" loading="lazy">
+        {% else %}
+            <i data-lucide="shirt"></i>
+        {% endif %}
+    </div>
+    <div class="diseno-card__body">
+        <h3>{{ d.nombre }}</h3>
+        <p>{{ d.tipo_prenda or "Prenda" }} · Tallas {{ d.tallas or "—" }}</p>
+        <div class="colores">
+            {% for dt in d.telas %}<span title="{{ dt.tela.nombre }}" style="background: {{ dt.tela.color_hex }}"></span>{% endfor %}
+        </div>
+        <div class="diseno-card__pie">
+            <span>{{ d.cliente.nombre if d.cliente else "Sin cliente" }}</span>
+            {% if current_user.puede_ver_costos and d.tiene_precio %}
+            <span class="badge badge--ok">{{ d.precio_venta | dinero }}</span>
+            {% else %}
+            <span class="badge badge--neutral">{{ "%g"|format(d.metros_por_prenda) }} mts/u</span>
+            {% endif %}
+        </div>
+    </div>
+</a>

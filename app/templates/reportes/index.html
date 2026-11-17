@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge_entrega %}
+{% block title %}Reportes Globales{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Reportes Globales</h1>
+        <p>Visión general de la operación de Arte y Color.</p>
+    </div>
+    <div class="tabs">
+        {% for d, etiqueta in [(7, '7 días'), (30, '30 días'), (90, '90 días'), (365, '1 año')] %}
+        <a href="{{ url_for('reportes.index', dias=d) }}" class="{% if dias == d %}active{% endif %}">{{ etiqueta }}</a>
+        {% endfor %}
+    </div>
+</div>
+
+<section class="kpis">
+    <div class="kpi">
+        <div class="kpi__head">Pedidos Totales <span class="kpi__icon"><i data-lucide="clipboard-list"></i></span></div>
+        <p class="kpi__valor">{{ resumen.pedidos }} <small>órdenes</small></p>
+        <div class="kpi__pie"><span class="badge badge--info">{{ resumen.activos }} activos</span> {{ resumen.unidades }} prendas en total</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi__head">Puntualidad de Entrega <span class="kpi__icon"><i data-lucide="calendar-check"></i></span></div>
+        <p class="kpi__valor">{{ (resumen.puntualidad ~ '%') if resumen.puntualidad is not none else '—' }}</p>
+        <div class="kpi__pie"><span class="badge badge--ok">{{ resumen.entregados }} entregados</span> a tiempo o antes</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi__head">Pedidos Vencidos <span class="kpi__icon"><i data-lucide="alarm-clock"></i></span></div>
+        <p class="kpi__valor">{{ resumen.vencidos }} <small>órdenes</small></p>
+        <div class="kpi__pie">{% if resumen.vencidos %}<span class="badge badge--danger">Atención</span>{% else %}<span class="badge badge--ok">Al día</span>{% endif %} Fecha límite superada</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi__head">Movimientos de Inventario <span class="kpi__icon"><i data-lucide="arrow-right-left"></i></span></div>
+        <p class="kpi__valor">{{ resumen.movimientos }} <small>registros</small></p>
+        <div class="kpi__pie"><span class="badge badge--warn">{{ resumen.insumos_alerta }} en alerta</span> últimos {{ dias }} días</div>
+    </div>
+</section>
+
+<div class="dash-grid">
+    <section class="panel span-6">
+        <div class="panel__head"><div><h2>Pedidos por Estado</h2><p>Todas las órdenes registradas</p></div></div>
+        <div class="panel__body stock-lista">
+            {% for f in NOMBRES_FASES %}
+            {% set v = por_estado.get(f, 0) %}
+            <div>
+                <div class="stock-fila__head"><span>{{ f }}</span><strong>{{ v }}</strong></div>
+                <div class="pista"><div class="pista__relleno" style="width: {{ (v / max_estado * 100) | round | int }}%;"></div></div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="panel span-6">
+        <div class="panel__head"><div><h2>Clientes con Más Prendas</h2><p>Unidades pedidas acumuladas</p></div></div>
+        <div class="panel__body stock-lista">
+            {% for nombre, unidades in top_clientes %}
+            <div>
+                <div class="stock-fila__head"><span>{{ nombre }}</span><strong>{{ unidades }} und.</strong></div>
+                <div class="pista"><div class="pista__relleno" style="width: {{ (unidades / max_cliente * 100) | round | int }}%; background: var(--c-asparagus);"></div></div>
+            </div>
+            {% else %}<p class="vacio">Sin pedidos.</p>{% endfor %}
+        </div>
+    </section>
+
+    <section class="panel span-6">
+        <div class="panel__head"><div><h2>Insumos Más Consumidos</h2><p>Salidas de los últimos {{ dias }} días</p></div></div>
+        <div class="panel__body stock-lista">
+            {% for insumo, cantidad in top_consumo %}
+            <div>
+                <div class="stock-fila__head">
+                    <span class="tela"><span class="muestra" style="background: {{ insumo.color_hex }}"></span>{{ insumo.nombre }}</span>
+                    <strong>{{ cantidad | metros }} {{ insumo.unidad_medida | unidad_corta }}</strong>
+                </div>
+                <div class="pista"><div class="pista__relleno pista__relleno--bajo" style="width: {{ (cantidad / max_consumo * 100) | round | int }}%;"></div></div>
+            </div>
+            {% else %}<p class="vacio">Sin salidas en el periodo.</p>{% endfor %}
+        </div>
+    </section>
+
+    <section class="panel span-6">
+        <div class="panel__head"><div><h2>Actividad del Equipo</h2><p>Movimientos y actualizaciones de rastreo · {{ dias }} días</p></div></div>
+        <div class="lista-compacta">
+            {% for nombre, n in actividad %}
+            <div>
+                <span class="avatar avatar--sm">{{ nombre | iniciales }}</span>
+                <div class="grow"><strong>{{ nombre }}</strong></div>
+                <span class="badge badge--neutral">{{ n }} acciones</span>
+            </div>
+            {% else %}<p class="vacio">Sin actividad registrada.</p>{% endfor %}
+        </div>
+    </section>
+</div>
+
+{% if vencidos %}
+<section class="panel">
+    <div class="panel__head"><div><h2>Pedidos Vencidos</h2><p>Superaron su fecha límite sin entregarse</p></div></div>
+    <div class="lista-compacta">
+        {% for p in vencidos %}
+        <a href="{{ url_for('rastreo.detalle', folio=p.folio) }}">
+            <span class="kpi__icon"><i data-lucide="alarm-clock"></i></span>
+            <div class="grow"><strong>{{ p.folio }} · {{ p.modelo_prenda }}</strong><small>{{ p.cliente.nombre }} · {{ p.estado }}</small></div>
+            {{ badge_entrega(p) }}
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<section class="panel">
+    <div class="panel__head">
+        <div><h2>Exportar Datos</h2><p>Archivos CSV que abren directamente en Excel</p></div>
+    </div>
+    <div class="panel__body flex flex--wrap">
+        <a class="btn btn--outline" href="{{ url_for('reportes.exportar', tipo='pedidos') }}"><i data-lucide="file-spreadsheet"></i> Pedidos</a>
+        <a class="btn btn--outline" href="{{ url_for('reportes.exportar', tipo='inventario') }}"><i data-lucide="file-spreadsheet"></i> Inventario</a>
+        <a class="btn btn--outline" href="{{ url_for('reportes.exportar', tipo='movimientos') }}"><i data-lucide="file-spreadsheet"></i> Movimientos</a>
+        <a class="btn btn--outline" href="{{ url_for('reportes.exportar', tipo='contactos') }}"><i data-lucide="file-spreadsheet"></i> Contactos</a>
+    </div>
+</section>
+{% endblock %}

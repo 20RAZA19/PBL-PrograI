@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "_macros.html" import boton_accion %}
+{% block title %}Notificaciones{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Notificaciones</h1>
+        <p>
+            {% if current_user.rol == 'cliente' %}Avisos sobre tus pedidos y cotizaciones.
+            {% else %}Pedidos por vencer, insumos críticos y eventos importantes. Los avisos automáticos desaparecen cuando la situación se resuelve.{% endif %}
+        </p>
+    </div>
+    {% if avisos_sin_leer %}
+    <div class="page-head__acciones">
+        {{ boton_accion(accion_form, url_for('notificaciones.leer_todas'), "Marcar todo como leído", "check-check", "btn btn--outline") }}
+    </div>
+    {% endif %}
+</div>
+
+<div class="topbar">
+    <div class="tabs">
+        <a href="{{ url_for('notificaciones.lista') }}" class="{% if filtro != 'no-leidas' %}active{% endif %}">Todas</a>
+        <a href="{{ url_for('notificaciones.lista', filtro='no-leidas') }}" class="{% if filtro == 'no-leidas' %}active{% endif %}">Sin leer {% if avisos_sin_leer %}<span class="badge badge--warn">{{ avisos_sin_leer }}</span>{% endif %}</a>
+    </div>
+</div>
+
+<section class="panel">
+    <div class="avisos__lista">
+        {% for n in avisos %}
+        <div class="aviso aviso--{{ n.nivel }} {% if not n.leida %}aviso--nuevo{% endif %}" style="align-items: center;">
+            <span class="aviso__icono"><i data-lucide="{{ n.icono }}"></i></span>
+            <a class="aviso__texto grow" href="{{ url_for('notificaciones.ir', notificacion_id=n.id) }}">
+                <strong>{{ n.titulo }}</strong>
+                {% if n.mensaje %}<small>{{ n.mensaje }}</small>{% endif %}
+                <time datetime="{{ n.creada_en.isoformat() }}">{{ n.creada_en | fecha_es }} · {{ n.creada_en | hora }}{% if n.automatica %} · se actualiza solo{% endif %}</time>
+            </a>
+            {% if not n.leida %}
+            <form method="post" action="{{ url_for('notificaciones.leer', notificacion_id=n.id, filtro=filtro) }}">
+                {{ accion_form.hidden_tag() }}
+                <button class="btn-icono" type="submit" title="Marcar como leída" aria-label="Marcar como leída"><i data-lucide="check"></i></button>
+            </form>
+            {% endif %}
+        </div>
+        {% else %}
+        <p class="avisos__vacio"><i data-lucide="bell-off"></i> {{ 'No tienes avisos sin leer.' if filtro == 'no-leidas' else 'No tienes notificaciones.' }}</p>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge_pedido %}
+{% block title %}Costos y Márgenes{% endblock %}
+
+{% macro margen(valor) %}
+{% if valor is none %}<span class="muted">—</span>
+{% elif valor < 0 %}<span class="badge badge--danger">{{ valor }}%</span>
+{% elif valor < margen_minimo %}<span class="badge badge--warn">{{ valor }}%</span>
+{% elif valor < meta_margen %}<span class="badge badge--info">{{ valor }}%</span>
+{% else %}<span class="badge badge--ok">{{ valor }}%</span>{% endif %}
+{% endmacro %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Costos y Márgenes</h1>
+        <p>Costo por prenda = Σ (cantidad de cada insumo × su costo) + mano de obra. Ganancia = precio de venta − costo.</p>
+    </div>
+</div>
+
+<section class="kpis">
+    <div class="kpi">
+        <div class="kpi__head">Ventas {{ 'activas' if vista == 'activos' else 'totales' }} <span class="kpi__icon"><i data-lucide="badge-dollar-sign"></i></span></div>
+        <p class="kpi__valor">{{ resumen.ingreso | dinero }}</p>
+        <div class="kpi__pie">Costo estimado {{ resumen.costo | dinero }}</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi__head">Ganancia estimada <span class="kpi__icon"><i data-lucide="trending-up"></i></span></div>
+        <p class="kpi__valor {{ 'negativo' if resumen.ganancia < 0 }}">{{ resumen.ganancia | dinero }}</p>
+        <div class="kpi__pie">Margen {{ margen(resumen.margen) }} · meta {{ meta_margen }}%</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi__head">Sin datos de costo <span class="kpi__icon"><i data-lucide="circle-help"></i></span></div>
+        <p class="kpi__valor">{{ resumen.sin_costeo }} <small>pedidos</small></p>
+        <div class="kpi__pie">{{ resumen.disenos_incompletos }} diseño{{ 's' if resumen.disenos_incompletos != 1 }} por completar</div>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel__head">
+        <div><h2>Costo por prenda de cada diseño</h2><p>Completa precio, ficha técnica y costos de insumos para ver el margen</p></div>
+        <a href="{{ url_for('catalogo.nuevo') }}" class="btn btn--outline btn--sm"><i data-lucide="plus"></i> Nuevo diseño</a>
+    </div>
+    <div class="tabla-wrap">
+        <table class="tabla-compacta">
+            <thead>
+                <tr><th>Diseño</th><th>Materiales</th><th class="num">Costo materiales</th><th class="num">Mano de obra</th>
+                    <th class="num">Costo total</th><th class="num">Precio</th><th class="num">Ganancia / prenda</th><th class="num">Margen</th></tr>
+            </thead>
+            <tbody>
+                {% for d in disenos %}
+                <tr>
+                    <td>
+                        <a class="tela" href="{{ url_for('catalogo.detalle', diseno_id=d.id) }}">
+                            {% if d.imagen %}<img class="miniatura" src="{{ url_for('static', filename=d.imagen) }}" alt="">{% else %}<span class="kpi__icon"><i data-lucide="shirt"></i></span>{% endif %}
+                            <div><strong>{{ d.nombre }}</strong><span class="muted small">{{ d.cliente.nombre if d.cliente else "General" }}</span></div>
+                        </a>
+                    </td>
+                    <td class="small" style="min-width: 260px;">
+                        {% for f in d.desglose_costos %}<span title="{{ f.cantidad | metros }} × {{ f.costo_unitario | dinero }}" style="white-space: nowrap;">{{ f.insumo.nombre }}{% if not f.insumo.tiene_costo %} <span class="badge badge--warn chip--sm">sin costo</span>{% endif %}</span>{% if not loop.last %} · {% endif %}{% else %}<span class="badge badge--warn">Sin ficha técnica</span>{% endfor %}
+                    </td>
+                    <td class="num">{{ d.costo_materiales | dinero }}</td>
+                    <td class="num">{{ d.costo_mano_obra | dinero }}</td>
+                    <td class="num"><strong>{{ d.costo_por_prenda | dinero }}</strong></td>
+                    <td class="num">{% if d.tiene_precio %}{{ d.precio_venta | dinero }}{% else %}<a class="badge badge--warn" href="{{ url_for('catalogo.editar', diseno_id=d.id) }}">Asignar precio</a>{% endif %}</td>
+                    <td class="num {{ 'negativo' if d.margen_unitario is not none and d.margen_unitario < 0 }}">{{ d.margen_unitario | dinero if d.margen_unitario is not none else "—" }}</td>
+                    <td class="num">{{ margen(d.margen_pct) }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" class="vacio">No hay diseños en el catálogo.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel__head">
+        <div><h2>Rentabilidad por pedido</h2><p>Estimada con la ficha del diseño · «Material real» suma lo descontado del inventario para el pedido</p></div>
+        <div class="tabs">
+            <a href="{{ url_for('costos.index', vista='activos') }}" class="{% if vista == 'activos' %}active{% endif %}">Activos</a>
+            <a href="{{ url_for('costos.index', vista='todos') }}" class="{% if vista != 'activos' %}active{% endif %}">Todos</a>
+        </div>
+    </div>
+    <div class="tabla-wrap">
+        <table class="tabla-compacta">
+            <thead>
+                <tr><th>Pedido</th><th>Estado</th><th class="num">Prendas</th><th class="num">Precio</th><th class="num">Venta</th>
+                    <th class="num">Costo estimado</th><th class="num">Material real</th><th class="num">Ganancia</th><th class="num">Margen</th></tr>
+            </thead>
+            <tbody>
+                {% for p in pedidos %}
+                <tr>
+                    <td><a href="{{ url_for('rastreo.detalle', folio=p.folio) }}"><strong>{{ p.folio }}</strong></a><br><span class="muted small">{{ p.cliente.nombre }} · {{ p.modelo_prenda }}</span></td>
+                    <td>{{ badge_pedido(p) }}</td>
+                    <td class="num">{{ "{:,}".format(p.cantidad) }}</td>
+                    <td class="num">{{ p.precio_efectivo | dinero if p.precio_efectivo is not none else "—" }}</td>
+                    <td class="num">{{ p.ingreso | dinero if p.ingreso is not none else "—" }}</td>
+                    <td class="num">{% if p.costo_estimado is not none %}{{ p.costo_estimado | dinero }}{% else %}<span class="muted" title="El pedido no tiene diseño asociado">sin diseño</span>{% endif %}</td>
+                    <td class="num">{{ p.costo_materiales_real | dinero if p.costo_materiales_real else "—" }}</td>
+                    <td class="num {{ 'negativo' if p.ganancia_estimada is not none and p.ganancia_estimada < 0 }}"><strong>{{ p.ganancia_estimada | dinero if p.ganancia_estimada is not none else "—" }}</strong></td>
+                    <td class="num">{{ margen(p.margen_pct) }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="9" class="vacio">No hay pedidos.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

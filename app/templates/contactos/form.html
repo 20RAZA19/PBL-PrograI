@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<a href="{{ volver }}" class="volver"><i data-lucide="arrow-left"></i> Volver</a>
+<div class="page-head">
+    <div>
+        <h1>{{ titulo | capitalize }}</h1>
+        <p>
+            {% if request.args.get('siguiente') == 'pedido' %}
+                Primero registra los datos de contacto; después volverás al pedido con este cliente seleccionado.
+            {% else %}
+                Los campos marcados con nombre son obligatorios; el resto ayuda a agilizar la atención.
+            {% endif %}
+        </p>
+    </div>
+</div>
+
+<section class="panel panel--form">
+    <form method="post" class="form" novalidate>
+        {{ form.hidden_tag() }}
+        <div class="form__grid">
+            {{ campo(form.nombre, "campo--full", placeholder="Ej. Colegio San José") }}
+            {% if tipo == 'proveedores' %}{{ campo(form.rubro, "campo--full") }}{% endif %}
+            {{ campo(form.contacto, placeholder="Nombre de la persona") }}
+            {{ campo(form.telefono, placeholder="Ej. +503 2222 0000", type="tel") }}
+            {{ campo(form.email, "campo--full", placeholder="correo@empresa.com", type="email") }}
+            {% if tipo == 'clientes' %}
+                {{ campo(form.notas, "campo--full") }}
+            {% else %}
+                {{ campo(form.notas_acuerdos, "campo--full") }}
+            {% endif %}
+        </div>
+        <div class="form__acciones">
+            <a href="{{ volver }}" class="btn btn--outline">Cancelar</a>
+            {{ form.submit(class_="btn btn--primary") }}
+        </div>
+    </form>
+</section>
+{% endblock %}

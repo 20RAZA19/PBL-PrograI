@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Directorio de Contactos{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Directorio de Contactos</h1>
+        <p>Clientes y proveedores con su historial de comunicación y acuerdos.</p>
+    </div>
+    {% if current_user.puede_gestionar_contactos %}
+    <div class="page-head__acciones">
+        <a href="{{ url_for('contactos.nuevo', tipo='proveedores') }}" class="btn btn--outline"><i data-lucide="truck"></i> Nuevo Proveedor</a>
+        <a href="{{ url_for('contactos.nuevo', tipo='clientes') }}" class="btn btn--primary"><i data-lucide="user-plus"></i> Nuevo Cliente</a>
+    </div>
+    {% endif %}
+</div>
+
+<div class="topbar">
+    <div class="tabs">
+        <a href="{{ url_for('contactos.lista', tab='clientes', q=q or None) }}" class="{% if tab == 'clientes' %}active{% endif %}">
+            <i data-lucide="building-2" style="width: 16px;"></i> Clientes <span class="badge badge--neutral">{{ totales.clientes }}</span>
+        </a>
+        <a href="{{ url_for('contactos.lista', tab='proveedores', q=q or None) }}" class="{% if tab == 'proveedores' %}active{% endif %}">
+            <i data-lucide="truck" style="width: 16px;"></i> Proveedores <span class="badge badge--neutral">{{ totales.proveedores }}</span>
+        </a>
+    </div>
+    <form class="search" method="get">
+        <i data-lucide="search"></i>
+        <input type="text" name="q" value="{{ q }}" placeholder="Nombre, contacto, teléfono{{ ' o rubro' if tab == 'proveedores' }}...">
+        <input type="hidden" name="tab" value="{{ tab }}">
+    </form>
+</div>
+
+<section class="panel">
+    <div class="tabla-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>{{ 'Cliente' if tab == 'clientes' else 'Proveedor' }}</th>
+                    <th>Contacto</th>
+                    <th>Teléfono / Correo</th>
+                    <th>{{ 'Pedidos activos' if tab == 'clientes' else 'Rubro' }}</th>
+                    <th>Notas</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in registros %}
+                <tr>
+                    <td>
+                        <a class="usuario-celda" href="{{ url_for('contactos.detalle', tipo=tab, registro_id=r.id) }}">
+                            <span class="avatar avatar--sm">{{ r.nombre | iniciales }}</span>
+                            <div><strong>{{ r.nombre }}</strong><span>Alta {{ r.creado_en | fecha_es }}</span></div>
+                        </a>
+                    </td>
+                    <td>{{ r.contacto or "—" }}</td>
+                    <td>
+                        {% if r.telefono %}<a href="tel:{{ r.telefono }}">{{ r.telefono }}</a>{% else %}—{% endif %}
+                        {% if r.email %}<br><a class="muted small" href="mailto:{{ r.email }}">{{ r.email }}</a>{% endif %}
+                    </td>
+                    <td>
+                        {% if tab == 'clientes' %}
+                            {% set activos = r.pedidos_activos | length %}
+                            <span class="badge {{ 'badge--info' if activos else 'badge--neutral' }}">{{ activos }} activo{{ 's' if activos != 1 }}</span>
+                        {% else %}
+                            {{ r.rubro or "—" }}
+                        {% endif %}
+                    </td>
+                    <td><span class="badge badge--neutral"><i data-lucide="message-square-text"></i>{{ r.historial | length }}</span></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5">
+                    <div class="vacio">
+                        <i data-lucide="contact" style="width: 48px; height: 48px; opacity: 0.5; margin-bottom: 16px;"></i>
+                        {% if q %}No encontramos «{{ q }}».{% else %}Aún no hay {{ tab }} registrados.{% endif %}
+                        {% if current_user.puede_gestionar_contactos %}
+                        <div style="margin-top: 16px;">
+                            <a href="{{ url_for('contactos.nuevo', tipo=tab, nombre=q or None) }}" class="btn btn--primary"><i data-lucide="plus"></i> Registrar {{ 'cliente' if tab == 'clientes' else 'proveedor' }}{% if q %} «{{ q }}»{% endif %}</a>
+                        </div>
+                        {% endif %}
+                    </div>
+                </td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

@@ -1,8 +1,8 @@
-"""Modelos del inventario de telas, diseños y pedidos
+"""Version inicial con roles y rastreo
 
-Revision ID: 70678117eaca
+Revision ID: 38cca672fbc0
 Revises: 
-Create Date: 2026-10-02 20:45:36.822579
+Create Date: 2026-10-26 19:04:54.607753
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '70678117eaca'
+revision = '38cca672fbc0'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -24,19 +24,33 @@ def upgrade():
     sa.Column('contacto', sa.String(length=100), nullable=True),
     sa.Column('telefono', sa.String(length=20), nullable=True),
     sa.Column('email', sa.String(length=120), nullable=True),
+    sa.Column('notas', sa.Text(), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_table('telas',
+    op.create_table('insumos',
     sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('codigo', sa.String(length=50), nullable=True),
     sa.Column('nombre', sa.String(length=150), nullable=False),
-    sa.Column('tipo', sa.String(length=80), nullable=True),
-    sa.Column('codigo_pantone', sa.String(length=30), nullable=True),
-    sa.Column('color_hex', sa.String(length=7), nullable=True),
-    sa.Column('metros_disponibles', sa.Numeric(precision=10, scale=2), nullable=False),
+    sa.Column('categoria', sa.String(length=50), nullable=False),
+    sa.Column('unidad_medida', sa.String(length=20), nullable=False),
+    sa.Column('cantidad_disponible', sa.Numeric(precision=10, scale=2), nullable=False),
     sa.Column('stock_minimo', sa.Numeric(precision=10, scale=2), nullable=False),
+    sa.Column('color_hex', sa.String(length=7), nullable=True),
+    sa.Column('codigo_pantone', sa.String(length=30), nullable=True),
+    sa.Column('tipo', sa.String(length=80), nullable=True),
     sa.Column('activo', sa.Boolean(), nullable=True),
     sa.Column('creado_en', sa.DateTime(), nullable=True),
     sa.Column('actualizado_en', sa.DateTime(), nullable=True),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('codigo')
+    )
+    op.create_table('proveedores',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('nombre', sa.String(length=150), nullable=False),
+    sa.Column('contacto', sa.String(length=100), nullable=True),
+    sa.Column('telefono', sa.String(length=20), nullable=True),
+    sa.Column('email', sa.String(length=120), nullable=True),
+    sa.Column('notas_acuerdos', sa.Text(), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('usuarios',
@@ -44,8 +58,11 @@ def upgrade():
     sa.Column('nombre', sa.String(length=100), nullable=False),
     sa.Column('email', sa.String(length=120), nullable=False),
     sa.Column('password_hash', sa.String(length=256), nullable=False),
+    sa.Column('telefono', sa.String(length=20), nullable=True),
+    sa.Column('fecha_nacimiento', sa.Date(), nullable=True),
     sa.Column('cargo', sa.String(length=80), nullable=True),
     sa.Column('rol', sa.String(length=20), nullable=False),
+    sa.Column('estado_permiso', sa.String(length=20), nullable=True),
     sa.Column('activo', sa.Boolean(), nullable=True),
     sa.Column('creado_en', sa.DateTime(), nullable=True),
     sa.PrimaryKeyConstraint('id'),
@@ -69,33 +86,43 @@ def upgrade():
     sa.Column('diseno_id', sa.Integer(), nullable=False),
     sa.Column('tela_id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['diseno_id'], ['disenos.id'], ),
-    sa.ForeignKeyConstraint(['tela_id'], ['telas.id'], ),
+    sa.ForeignKeyConstraint(['tela_id'], ['insumos.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('pedidos',
     sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('folio', sa.String(length=20), nullable=False),
+    sa.Column('modelo_prenda', sa.String(length=150), nullable=False),
+    sa.Column('tallas', sa.String(length=100), nullable=True),
+    sa.Column('colores', sa.String(length=100), nullable=True),
     sa.Column('cantidad', sa.Integer(), nullable=False),
-    sa.Column('estado', sa.String(length=20), nullable=False),
-    sa.Column('fecha_entrega', sa.Date(), nullable=True),
-    sa.Column('notas', sa.Text(), nullable=True),
+    sa.Column('estado', sa.String(length=50), nullable=False),
+    sa.Column('fase_tracking', sa.Integer(), nullable=True),
+    sa.Column('ubicacion_actual', sa.String(length=255), nullable=True),
+    sa.Column('latitud', sa.Float(), nullable=True),
+    sa.Column('longitud', sa.Float(), nullable=True),
+    sa.Column('fecha_limite', sa.Date(), nullable=False),
+    sa.Column('observaciones', sa.Text(), nullable=True),
     sa.Column('creado_en', sa.DateTime(), nullable=True),
-    sa.Column('diseno_id', sa.Integer(), nullable=False),
     sa.Column('cliente_id', sa.Integer(), nullable=False),
+    sa.Column('diseno_id', sa.Integer(), nullable=True),
     sa.ForeignKeyConstraint(['cliente_id'], ['clientes.id'], ),
     sa.ForeignKeyConstraint(['diseno_id'], ['disenos.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('folio')
     )
     op.create_table('movimientos',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('tipo', sa.String(length=10), nullable=False),
-    sa.Column('metros', sa.Numeric(precision=10, scale=2), nullable=False),
+    sa.Column('cantidad', sa.Numeric(precision=10, scale=2), nullable=False),
+    sa.Column('metros', sa.Numeric(precision=10, scale=2), nullable=True),
     sa.Column('motivo', sa.String(length=255), nullable=True),
     sa.Column('fecha', sa.DateTime(), nullable=True),
-    sa.Column('tela_id', sa.Integer(), nullable=False),
-    sa.Column('usuario_id', sa.Integer(), nullable=False),
+    sa.Column('insumo_id', sa.Integer(), nullable=False),
+    sa.Column('usuario_id', sa.Integer(), nullable=True),
     sa.Column('pedido_id', sa.Integer(), nullable=True),
+    sa.ForeignKeyConstraint(['insumo_id'], ['insumos.id'], ),
     sa.ForeignKeyConstraint(['pedido_id'], ['pedidos.id'], ),
-    sa.ForeignKeyConstraint(['tela_id'], ['telas.id'], ),
     sa.ForeignKeyConstraint(['usuario_id'], ['usuarios.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -109,6 +136,7 @@ def downgrade():
     op.drop_table('diseno_telas')
     op.drop_table('disenos')
     op.drop_table('usuarios')
-    op.drop_table('telas')
+    op.drop_table('proveedores')
+    op.drop_table('insumos')
     op.drop_table('clientes')
     # ### end Alembic commands ###

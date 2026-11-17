@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Órdenes de Compra{% endblock %}
+
+{% set clases = {"borrador": "badge--neutral", "enviada": "badge--info", "recibida": "badge--ok", "cancelada": "badge--danger"} %}
+
+{% block content %}
+<a href="{{ url_for('compras.index') }}" class="volver"><i data-lucide="arrow-left"></i> Compras sugeridas</a>
+<div class="page-head">
+    <div>
+        <h1>Órdenes de Compra</h1>
+        <p>Historial de pedidos a proveedores. Al recibir una orden, su mercadería entra sola al inventario.</p>
+    </div>
+</div>
+
+<div class="topbar">
+    <div class="tabs">
+        <a href="{{ url_for('compras.ordenes') }}" class="{% if not estado %}active{% endif %}">Todas</a>
+        {% for clave, nombre in estados.items() %}
+        <a href="{{ url_for('compras.ordenes', estado=clave) }}" class="{% if estado == clave %}active{% endif %}">{{ nombre.split()[0] }}s</a>
+        {% endfor %}
+    </div>
+</div>
+
+<section class="panel">
+    <div class="tabla-wrap">
+        <table>
+            <thead>
+                <tr><th>Folio</th><th>Proveedor</th><th>Fecha</th><th>Entrega</th><th class="num">Insumos</th><th class="num">Total</th><th>Estado</th></tr>
+            </thead>
+            <tbody>
+                {% for oc in ordenes %}
+                <tr>
+                    <td><a class="tela" href="{{ url_for('compras.detalle', orden_id=oc.id) }}"><span class="kpi__icon"><i data-lucide="shopping-cart"></i></span><strong>{{ oc.folio }}</strong></a></td>
+                    <td>{{ oc.proveedor.nombre if oc.proveedor else "—" }}</td>
+                    <td>{{ oc.fecha | fecha_es }}</td>
+                    <td>{% if oc.estado == 'recibida' %}Recibida {{ oc.fecha_recepcion | fecha_es }}{% else %}{{ oc.fecha_esperada | fecha_es }}{% endif %}</td>
+                    <td class="num">{{ oc.lineas | length }}</td>
+                    <td class="num"><strong>{{ oc.total | dinero }}</strong></td>
+                    <td>
+                        <span class="badge {{ clases.get(oc.estado, 'badge--neutral') }}">{{ oc.estado_legible }}</span>
+                        {% if oc.atrasada %}<span class="badge badge--danger">Atrasada</span>{% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="vacio">No hay órdenes de compra{{ ' con ese estado' if estado }}.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

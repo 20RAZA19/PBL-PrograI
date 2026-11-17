@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo %}
+
+{% block title %}Recuperar contraseña{% endblock %}
+
+{% block content %}
+<div class="auth-card">
+    <div style="display: flex; justify-content: center; margin-bottom: 24px;">
+        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Arte y Color" style="max-width: 170px; background: #fff; padding: 12px 18px; border-radius: 16px; box-shadow: var(--shadow);">
+    </div>
+    <div class="panel">
+        <div class="panel__head" style="justify-content: center; text-align: center; padding-bottom: 10px; border-bottom: 0;">
+            <div>
+                <h2>Recuperar contraseña</h2>
+                <p>Escribe el correo con el que entras a AyC Control. Te enviaremos un código de 6 dígitos que vale {{ config.RECUPERACION_MINUTOS }} minutos.</p>
+            </div>
+        </div>
+        <form method="post" class="form" style="padding-top: 0;" novalidate>
+            {{ form.hidden_tag() }}
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                {{ campo(form.email, placeholder="tu@empresa.com", autocomplete="username") }}
+                <button type="submit" class="btn btn--primary" style="width: 100%; justify-content: center; margin-top: 10px; padding: 12px;">
+                    <i data-lucide="mail"></i> Enviarme el código
+                </button>
+            </div>
+        </form>
+        <div style="text-align: center; font-size: 14px; color: var(--text-muted);">
+            ¿Ya tienes un código? <a href="{{ url_for('auth.recuperar_codigo') }}" style="color: var(--primary); font-weight: 600;">Escríbelo aquí</a>
+        </div>
+        <div style="text-align: center; margin-top: 10px; font-size: 14px; padding-bottom: 24px; color: var(--text-muted);">
+            <a href="{{ url_for('auth.login') }}" style="color: var(--primary); font-weight: 600;">Volver a iniciar sesión</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

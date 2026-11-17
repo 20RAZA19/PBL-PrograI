@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% from "_macros.html" import boton_accion, badge_pedido %}
+{% block title %}{{ cot.folio }}{% endblock %}
+
+{% set clases_estado = {"borrador": "badge--neutral", "enviada": "badge--info", "aceptada": "badge--ok", "rechazada": "badge--danger"} %}
+
+{% block content %}
+<a href="{{ url_for('cotizaciones.lista') }}" class="volver"><i data-lucide="arrow-left"></i> Cotizaciones</a>
+
+<div class="page-head">
+    <div>
+        <h1>{{ cot.folio }}</h1>
+        <p>
+            {% if current_user.es_staff %}{{ cot.cliente.nombre }} · {% endif %}{{ "{:,}".format(cot.total_prendas) }} prendas · {{ cot.total | dinero }}
+            {% if cot.vencida %}<span class="badge badge--warn">Vencida</span>
+            {% else %}<span class="badge {{ clases_estado.get(cot.estado, 'badge--neutral') }}">{{ cot.estado_legible }}</span>{% endif %}
+        </p>
+    </div>
+    <div class="page-head__acciones">
+        <a href="{{ url_for('cotizaciones.pdf', cotizacion_id=cot.id) }}" class="btn btn--outline" target="_blank" rel="noopener"><i data-lucide="file-text"></i> Ver PDF</a>
+        <a href="{{ url_for('cotizaciones.pdf', cotizacion_id=cot.id, descargar=1) }}" class="btn btn--outline"><i data-lucide="download"></i> Descargar</a>
+
+        {% if current_user.puede_cotizar %}
+            {% if cot.editable %}
+                <a href="{{ url_for('cotizaciones.editar', cotizacion_id=cot.id) }}" class="btn btn--outline"><i data-lucide="pencil"></i> Editar</a>
+                {{ boton_accion(accion_form, url_for('cotizaciones.accion', cotizacion_id=cot.id, accion='enviar'), "Marcar como enviada", "send", "btn btn--primary") }}
+            {% else %}
+                {{ boton_accion(accion_form, url_for('cotizaciones.accion', cotizacion_id=cot.id, accion='duplicar'), "Duplicar", "copy", "btn btn--outline") }}
+            {% endif %}
+        {% endif %}
+    </div>
+</div>
+
+{% if cot.estado == 'enviada' and not cot.vencida and (current_user.puede_cotizar or current_user.rol == 'cliente') %}
+<section class="panel">
+    <div class="rec rec--sugerencia" style="border-top: 0;">
+        <span class="rec__icono"><i data-lucide="message-square-reply"></i></span>
+        <div class="rec__cuerpo">
+            <div class="rec__titulo"><strong>{{ '¿Aprobamos esta propuesta?' if current_user.rol == 'cliente' else 'Esperando respuesta del cliente' }}</strong></div>
+            <p>Vigente hasta el {{ cot.fecha_vencimiento | fecha_es }} ({{ cot.dias_para_vencer }} día{{ 's' if cot.dias_para_vencer != 1 }}).
+               {% if current_user.rol != 'cliente' %}El cliente también puede responder desde su portal.{% endif %}</p>
+        </div>
+        <div class="flex">
+            {{ boton_accion(accion_form, url_for('cotizaciones.accion', cotizacion_id=cot.id, accion='rechazar'), "Rechazar", "x", "btn btn--outline",
+                            confirmar="¿Marcar la cotización como rechazada?") }}
+            {{ boton_accion(accion_form, url_for('cotizaciones.accion', cotizacion_id=cot.id, accion='aceptar'), "Aceptar", "check", "btn btn--primary") }}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+{% if cot.estado == 'aceptada' and current_user.puede_crear_pedidos %}
+<section class="panel">
+    <div class="rec rec--sugerencia" style="border-top: 0; border-left-color: var(--ok-text);">
+        <span class="rec__icono" style="background: var(--ok-bg); color: var(--ok-text);"><i data-lucide="party-popper"></i></span>
+        <div class="rec__cuerpo">
+            <div class="rec__titulo"><strong>Cotización aceptada{% if cot.respondida_en %} el {{ cot.respondida_en | fecha_es }}{% endif %}</strong></div>
+            {% if cot.pedidos %}
+                <p>Ya se generaron sus pedidos de producción:</p>
+                <ul class="rec__items">
+                    {% for p in cot.pedidos %}<li><a href="{{ url_for('rastreo.detalle', folio=p.folio) }}" style="color: var(--primary); font-weight: 600;">{{ p.folio }}</a> · {{ p.modelo_prenda }} · {{ p.cantidad }} und. · {{ badge_pedido(p) }}</li>{% endfor %}
+                </ul>
+            {% else %}
+                <p>Genera las órdenes de producción: se crea un pedido por cada prenda, con el precio acordado y fecha límite {{ (cot.fecha_entrega | fecha_es) if cot.fecha_entrega else 'a 30 días' }}.</p>
+            {% endif %}
+        </div>
+        {% if not cot.pedidos %}
+        {{ boton_accion(accion_form, url_for('cotizaciones.accion', cotizacion_id=cot.id, accion='convertir'), "Convertir en pedidos", "clipboard-plus", "btn btn--primary") }}
+        {% endif %}
+    </div>
+</section>
+{% endif %}
+
+<section class="panel">
+    <div class="doc-cabecera">
+        <div>
+            <p class="ficha__titulo">Cliente</p>
+            <h3 style="margin: 4px 0 6px;">{{ cot.cliente.nombre }}</h3>
+            <p class="muted small">
+                {% if cot.cliente.contacto %}Atención: {{ cot.cliente.contacto }}<br>{% endif %}
+                {{ cot.cliente.telefono or "" }}{% if cot.cliente.telefono and cot.cliente.email %} · {% endif %}{{ cot.cliente.email or "" }}
+            </p>
+        </div>
+        <dl>
+            <div><dt>Fecha</dt><dd>{{ cot.fecha | fecha_es }}</dd></div>
+            <div><dt>Válida hasta</dt><dd>{{ cot.fecha_vencimiento | fecha_es }}</dd></div>
+            <div><dt>Entrega propuesta</dt><dd>{{ cot.fecha_entrega | fecha_es }}</dd></div>
+            {% if current_user.es_staff %}<div><dt>Elaborada por</dt><dd>{{ cot.usuario.nombre if cot.usuario else "—" }}</dd></div>{% endif %}
+        </dl>
+    </div>
+    <div class="tabla-wrap">
+        <table class="tabla-compacta">
+            <thead>
+                <tr><th>Descripción</th><th>Tallas</th><th class="num">Cantidad</th><th class="num">Precio unit.</th><th class="num">Importe</th>
+                    {% if current_user.puede_ver_costos %}<th class="num">Margen</th>{% endif %}</tr>
+            </thead>
+            <tbody>
+                {% for l in cot.lineas %}
+                <tr>
+                    <td>
+                        <strong>{{ l.descripcion }}</strong>
+                        {% if l.diseno %}<br><a class="muted small" href="{{ url_for('catalogo.detalle', diseno_id=l.diseno.id, cantidad=l.cantidad) }}">Diseño: {{ l.diseno.nombre }}</a>{% endif %}
+                    </td>
+                    <td>{{ l.tallas or "—" }}</td>
+                    <td class="num">{{ "{:,}".format(l.cantidad) }}</td>
+                    <td class="num">{{ l.precio_unitario | dinero }}</td>
+                    <td class="num"><strong>{{ l.importe | dinero }}</strong></td>
+                    {% if current_user.puede_ver_costos %}
+                    <td class="num">
+                        {% if l.diseno and l.diseno.costo_por_prenda and l.precio_unitario %}
+                            {% set m = ((l.precio_unitario - l.diseno.costo_por_prenda) / l.precio_unitario * 100) | float %}
+                            <span class="{{ 'negativo' if m < 15 else 'positivo' }}">{{ "%.1f" | format(m) }}%</span>
+                        {% else %}<span class="muted">—</span>{% endif %}
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="doc-pie" style="padding-top: 20px;">
+        <div>
+            <div class="doc-texto">
+            {% if cot.condiciones %}<p><strong>Condiciones</strong>{{ cot.condiciones }}</p>{% endif %}
+            {% if cot.notas %}<p style="margin-top: 14px;"><strong>Notas</strong>{{ cot.notas }}</p>{% endif %}
+            </div>
+            {% if current_user.puede_ver_costos and cot.costo_estimado is not none %}
+            <div class="margen-box" style="margin-top: 12px;">
+                <i data-lucide="calculator"></i>
+                <span>Costo estimado {{ cot.costo_estimado | dinero }} · ganancia {{ (cot.base_imponible - cot.costo_estimado) | dinero }}
+                    (<strong class="{{ 'negativo' if cot.margen_pct < 15 else 'positivo' }}">{{ cot.margen_pct }}%</strong>) · solo visible para el equipo</span>
+            </div>
+            {% endif %}
+        </div>
+        <div class="totales">
+            <div><span>Subtotal</span><strong>{{ cot.subtotal | dinero }}</strong></div>
+            {% if cot.descuento_pct %}<div><span>Descuento ({{ "%g" | format(cot.descuento_pct | float) }}%)</span><span>−{{ cot.descuento | dinero }}</span></div>{% endif %}
+            <div><span>IVA ({{ "%g" | format(cot.iva_pct | float) }}%)</span><span>{{ cot.iva | dinero }}</span></div>
+            <div class="totales__total"><span>Total</span><span>{{ cot.total | dinero }}</span></div>
+        </div>
+    </div>
+</section>
+
+{% if current_user.puede_cotizar and cot.editable %}
+{{ boton_accion(accion_form, url_for('cotizaciones.accion', cotizacion_id=cot.id, accion='eliminar'), "Eliminar borrador", "trash-2", "btn btn--danger",
+                confirmar="¿Eliminar este borrador? No se puede deshacer.") }}
+{% endif %}
+{% endblock %}

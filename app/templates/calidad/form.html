@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo %}
+{% block title %}Registrar Defecto{% endblock %}
+
+{% block content %}
+{% set volver = request.args.get('volver') or url_for('calidad.index') %}
+<a href="{{ volver }}" class="volver"><i data-lucide="arrow-left"></i> Volver</a>
+<div class="page-head">
+    <div>
+        <h1>Registrar Defecto o Reproceso</h1>
+        <p>Cada registro alimenta la tasa de defectos de su línea de producción y avisa al equipo.</p>
+    </div>
+</div>
+
+<section class="panel panel--form">
+    <form method="post" class="form" novalidate>
+        {{ form.hidden_tag() }}
+        <input type="hidden" name="volver" value="{{ volver }}">
+        <div class="form__grid">
+            {{ campo(form.pedido_id, "campo--full") }}
+            {{ campo(form.linea) }}
+            {{ campo(form.tipo) }}
+            {{ campo(form.categoria) }}
+            {{ campo(form.cantidad, min="1") }}
+            {{ campo(form.descripcion, "campo--full", rows="3", placeholder="Ej. 12 camisas con la costura del hombro torcida, talla M.") }}
+            {{ campo(form.accion_correctiva, "campo--full", rows="2", placeholder="Ej. Se recosieron y se ajustó la máquina 4.") }}
+        </div>
+        <div class="form__acciones">
+            <a href="{{ volver }}" class="btn btn--outline">Cancelar</a>
+            <button type="submit" class="btn btn--primary"><i data-lucide="save"></i> Guardar registro</button>
+        </div>
+    </form>
+</section>
+{% endblock %}

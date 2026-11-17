@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo %}
+
+{% block title %}Recuperar contraseña{% endblock %}
+
+{% block content %}
+<div class="auth-card">
+    <div style="display: flex; justify-content: center; margin-bottom: 24px;">
+        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Arte y Color" style="max-width: 170px; background: #fff; padding: 12px 18px; border-radius: 16px; box-shadow: var(--shadow);">
+    </div>
+    <div class="panel">
+        <div class="panel__head" style="justify-content: center; text-align: center; padding-bottom: 10px; border-bottom: 0;">
+            <div>
+                <h2>Escribe tu código</h2>
+                <p>Revisa tu correo (y la carpeta de spam). Usa el código más reciente: vale {{ config.RECUPERACION_MINUTOS }} minutos y una sola vez.</p>
+            </div>
+        </div>
+        <form method="post" class="form" style="padding-top: 0;" novalidate>
+            {{ form.hidden_tag() }}
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                {{ campo(form.email, placeholder="tu@empresa.com", autocomplete="username") }}
+                {{ campo(form.codigo, placeholder="123456", inputmode="numeric", autocomplete="one-time-code") }}
+                {{ campo(form.password_nueva, autocomplete="new-password") }}
+                {{ campo(form.password_confirmar, autocomplete="new-password") }}
+                <button type="submit" class="btn btn--primary" style="width: 100%; justify-content: center; margin-top: 10px; padding: 12px;">
+                    <i data-lucide="key-round"></i> Cambiar contraseña
+                </button>
+            </div>
+        </form>
+        <div style="text-align: center; font-size: 14px; color: var(--text-muted);">
+            ¿No te llegó? <a href="{{ url_for('auth.recuperar') }}" style="color: var(--primary); font-weight: 600;">Pide otro código</a>
+        </div>
+        <div style="text-align: center; margin-top: 10px; font-size: 14px; padding-bottom: 24px; color: var(--text-muted);">
+            <a href="{{ url_for('auth.login') }}" style="color: var(--primary); font-weight: 600;">Volver a iniciar sesión</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

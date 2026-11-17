@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% from "_macros.html" import boton_accion, badge_pedido, badge_entrega %}
+{% block title %}Tablero de Producción{% endblock %}
+
+{# Texto corto del tiempo restante para la tarjeta compacta #}
+{% macro tiempo(p) -%}
+{%- if p.entregado -%}Entregado
+{%- elif p.dias_restantes is none -%}Sin fecha
+{%- elif p.dias_restantes < 0 -%}Vencido {{ -p.dias_restantes }} d
+{%- elif p.dias_restantes == 0 -%}Vence hoy
+{%- elif p.dias_restantes == 1 -%}1 día
+{%- else -%}{{ p.dias_restantes }} días{%- endif -%}
+{%- endmacro %}
+
+{% macro urgencia(p) -%}
+{%- if p.entregado -%}ok{%- elif p.alerta_entrega == "vencido" -%}vencido{%- elif p.alerta_entrega == "pronto" -%}pronto{%- else -%}normal{%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Tablero de Producción</h1>
+        <p>Toca un pedido para ver su información completa{% if current_user.puede_mover_pedidos %} y moverlo de fase. Cada cambio queda registrado en el rastreo del cliente{% else %}. El cambio de fase lo realiza el Encargado de Taller{% endif %}.</p>
+    </div>
+</div>
+
+<div class="topbar">
+    <form class="search" method="get">
+        <i data-lucide="search"></i>
+        <input type="text" name="q" value="{{ q }}" placeholder="Buscar por folio, cliente o prenda...">
+    </form>
+    <div class="kanban-leyenda" aria-label="Leyenda de urgencia">
+        <span><i class="punto punto--vencido"></i>Vencido</span>
+        <span><i class="punto punto--pronto"></i>≤ 3 días</span>
+        <span><i class="punto punto--normal"></i>A tiempo</span>
+    </div>
+    {% if current_user.puede_atender_solicitudes %}
+    <a href="{{ url_for('solicitudes.lista', estado='enviada') }}" class="btn btn--primary">
+        <i data-lucide="clipboard-check"></i> Aprobaciones pendientes
+    </a>
+    {% endif %}
+</div>
+
+<div class="kanban-board">
+    {% for estado in estados %}
+    {% set fase = FASES[loop.index0] %}
+    {% set columna = pedidos | selectattr("estado", "equalto", estado) | list %}
+    <div class="kanban-column">
+        <h3><i data-lucide="{{ fase.icono }}"></i> {{ estado }} <span class="contador">{{ columna | length }}</span></h3>
+        {% for pedido in columna %}
+        {# Sin JavaScript el enlace lleva a la página de rastreo con toda la información #}
+        <a class="kcard kcard--{{ urgencia(pedido) }}" href="{{ url_for('rastreo.detalle', folio=pedido.folio) }}"
+           data-detalle="det-{{ pedido.id }}" aria-haspopup="dialog">
+            <span class="kcard__top">
+                <span class="kcard__folio">{{ pedido.folio }}</span>
+                <span class="kcard__tiempo"><i data-lucide="{{ 'circle-check' if pedido.entregado else 'clock' }}"></i>{{ tiempo(pedido) }}</span>
+            </span>
+            <span class="kcard__cliente" title="{{ pedido.cliente.nombre }}">{{ pedido.cliente.nombre }}</span>
+        </a>
+
+        <template id="det-{{ pedido.id }}">
+            <header class="kmodal__head">
+                <div>
+                    <p class="kmodal__eyebrow">{{ pedido.cliente.nombre }}</p>
+                    <h2 id="kmodal-titulo">{{ pedido.folio }}</h2>
+                    <div class="flex" style="gap: 6px; flex-wrap: wrap; margin-top: 6px;">{{ badge_pedido(pedido) }} {{ badge_entrega(pedido) }}</div>
+                </div>
+                <button type="button" class="btn-icono kmodal__cerrar" data-cerrar aria-label="Cerrar"><i data-lucide="x"></i></button>
+            </header>
+
+            <div class="kmodal__cuerpo">
+                <div class="kmodal__progreso">
+                    <div class="flex flex--between small"><span>Fase {{ pedido.fase_actual }} de {{ pedido.total_fases }}</span><strong>{{ pedido.progreso }}%</strong></div>
+                    <div class="progreso"><span style="width: {{ pedido.progreso }}%"></span></div>
+                </div>
+
+                <dl class="kmodal__datos">
+                    <div><dt>Prenda</dt><dd>{{ pedido.modelo_prenda }}</dd></div>
+                    <div><dt>Cantidad</dt><dd>{{ "{:,}".format(pedido.cantidad) }} und.</dd></div>
+                    <div><dt>Fecha límite</dt><dd>{{ pedido.fecha_limite | fecha_es }}</dd></div>
+                    <div><dt>Recibido</dt><dd>{{ pedido.creado_en | fecha_es if pedido.creado_en else "—" }}</dd></div>
+                    {% if pedido.tallas %}<div><dt>Tallas</dt><dd>{{ pedido.tallas }}</dd></div>{% endif %}
+                    {% if pedido.colores %}<div><dt>Colores</dt><dd>{{ pedido.colores }}</dd></div>{% endif %}
+                    <div><dt>Ubicación</dt><dd>{{ pedido.ubicacion_actual or "—" }}</dd></div>
+                    {% if pedido.diseno %}<div><dt>Diseño</dt><dd><a href="{{ url_for('catalogo.detalle', diseno_id=pedido.diseno.id) }}">{{ pedido.diseno.nombre }}</a></dd></div>{% endif %}
+                    {% if current_user.puede_ver_costos and pedido.precio_efectivo is not none %}
+                    <div><dt>Venta</dt><dd>{{ pedido.ingreso | dinero }}{% if pedido.margen_pct is not none %} · margen {{ pedido.margen_pct }}%{% endif %}</dd></div>
+                    {% endif %}
+                    {% if pedido.prendas_con_defecto %}<div><dt>Calidad</dt><dd class="negativo">{{ pedido.prendas_con_defecto }} prendas con defecto</dd></div>{% endif %}
+                </dl>
+
+                {% if pedido.observaciones %}
+                <div class="kmodal__nota"><strong>Observaciones</strong><p>{{ pedido.observaciones }}</p></div>
+                {% endif %}
+
+                {% set ev = pedido.ultimo_evento %}
+                {% if ev %}
+                <div class="kmodal__nota">
+                    <strong>Último movimiento</strong>
+                    <p>{{ ev.estado }}{% if ev.nota %} · {{ ev.nota }}{% endif %}</p>
+                    <small class="muted">{{ ev.fecha | hace }}{% if ev.usuario %} · {{ ev.usuario.nombre }}{% endif %}</small>
+                </div>
+                {% endif %}
+            </div>
+
+            <footer class="kmodal__acciones">
+                <a href="{{ url_for('rastreo.detalle', folio=pedido.folio) }}" class="btn btn--outline btn--sm"><i data-lucide="map-pin"></i> Rastreo completo</a>
+                <a href="{{ url_for('rastreo.ficha', folio=pedido.folio) }}" class="btn btn--outline btn--sm" target="_blank" rel="noopener"><i data-lucide="printer"></i> Ficha</a>
+                {% if current_user.puede_mover_pedidos %}
+                <div class="kmodal__mover">
+                    {% if pedido.fase_actual > 1 %}
+                    {{ boton_accion(accion_form, url_for('main.mover_pedido', id_pedido=pedido.id, direccion='anterior', q=q or None), "Regresar", "chevron-left", "btn btn--outline btn--sm",
+                                    titulo="Regresar a " ~ estados[pedido.fase_actual - 2]) }}
+                    {% endif %}
+                    {% if pedido.fase_actual < estados | length %}
+                    {{ boton_accion(accion_form, url_for('main.mover_pedido', id_pedido=pedido.id, direccion='siguiente', q=q or None), "Avanzar a " ~ estados[pedido.fase_actual], "chevron-right", "btn btn--primary btn--sm") }}
+                    {% endif %}
+                </div>
+                {% endif %}
+            </footer>
+        </template>
+        {% else %}
+        <div class="kanban-vacio">Sin pedidos</div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</div>
+
+<dialog class="kmodal" id="kmodal" aria-labelledby="kmodal-titulo"></dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/tablero.js') }}"></script>
+{% endblock %}

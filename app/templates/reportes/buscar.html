@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge_pedido, badge_entrega %}
+{% block title %}Buscar{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Búsqueda</h1>
+        <p>Localiza pedidos por folio, cliente o prenda{% if current_user.es_staff %}, además de insumos, contactos y diseños{% endif %}.</p>
+    </div>
+</div>
+
+<div class="topbar">
+    <form class="search" method="get" style="max-width: 640px;">
+        <i data-lucide="search"></i>
+        <input type="search" name="q" value="{{ q }}" placeholder="Ej. ORD-2026, Banco Nacional, polo..." autofocus aria-label="Buscar">
+    </form>
+    {% if q %}<span class="muted">{{ total }} resultado{{ 's' if total != 1 }}</span>{% endif %}
+</div>
+
+{% if q and q | length < 2 %}
+    <div class="panel"><p class="vacio">Escribe al menos 2 caracteres.</p></div>
+{% elif q and not total %}
+    <div class="panel">
+        <div class="vacio">
+            <i data-lucide="search-x" style="width: 48px; height: 48px; opacity: 0.5; margin-bottom: 16px;"></i>
+            No encontramos resultados para «{{ q }}».
+            {% if current_user.puede_editar_inventario or current_user.puede_gestionar_contactos %}
+            <div class="flex" style="justify-content: center; margin-top: 16px;">
+                {% if current_user.puede_editar_inventario %}<a class="btn btn--outline btn--sm" href="{{ url_for('telas.nueva', nombre=q) }}"><i data-lucide="plus"></i> Registrar como insumo</a>{% endif %}
+                {% if current_user.puede_gestionar_contactos %}<a class="btn btn--outline btn--sm" href="{{ url_for('contactos.nuevo', tipo='clientes', nombre=q) }}"><i data-lucide="user-plus"></i> Registrar como cliente</a>{% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+{% elif q %}
+    {% if r.pedidos %}
+    <section class="panel">
+        <div class="panel__head"><div><h2>Pedidos</h2><p>Abre el expediente completo de la orden</p></div><span class="badge badge--neutral">{{ r.pedidos | length }}</span></div>
+        <div class="lista-compacta">
+            {% for p in r.pedidos %}
+            <a href="{{ url_for('rastreo.detalle', folio=p.folio) }}">
+                <span class="kpi__icon"><i data-lucide="package"></i></span>
+                <div class="grow">
+                    <strong>{{ p.folio }} · {{ p.modelo_prenda }}</strong>
+                    <small>{{ p.cliente.nombre }} · {{ p.cantidad }} und. · Límite {{ p.fecha_limite | fecha_es }}</small>
+                </div>
+                {{ badge_pedido(p) }}{{ badge_entrega(p) }}
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    <div class="dash-grid">
+        {% if r.insumos %}
+        <section class="panel span-6">
+            <div class="panel__head"><div><h2>Insumos</h2></div><span class="badge badge--neutral">{{ r.insumos | length }}</span></div>
+            <div class="lista-compacta">
+                {% for i in r.insumos %}
+                <a href="{{ url_for('telas.detalle', tela_id=i.id) }}">
+                    <span class="muestra" style="background: {{ i.color_hex }}; width: 34px; height: 34px;"></span>
+                    <div class="grow"><strong>{{ i.nombre }}</strong><small>{{ i.codigo or "" }} · {{ i.categoria }} · {{ i.cantidad_disponible | metros }} {{ i.unidad_medida | unidad_corta }}</small></div>
+                    <span class="badge {{ {'Disponible': 'badge--ok', 'Stock Bajo': 'badge--warn', 'Crítico': 'badge--danger'}[i.estado] }}">{{ i.estado }}</span>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if r.clientes or r.proveedores %}
+        <section class="panel span-6">
+            <div class="panel__head"><div><h2>Contactos</h2></div><span class="badge badge--neutral">{{ (r.clientes | length) + (r.proveedores | length) }}</span></div>
+            <div class="lista-compacta">
+                {% for c in r.clientes %}
+                <a href="{{ url_for('contactos.detalle', tipo='clientes', registro_id=c.id) }}">
+                    <span class="avatar avatar--sm">{{ c.nombre | iniciales }}</span>
+                    <div class="grow"><strong>{{ c.nombre }}</strong><small>Cliente · {{ c.contacto or c.email or "Sin contacto" }}</small></div>
+                </a>
+                {% endfor %}
+                {% for p in r.proveedores %}
+                <a href="{{ url_for('contactos.detalle', tipo='proveedores', registro_id=p.id) }}">
+                    <span class="avatar avatar--sm">{{ p.nombre | iniciales }}</span>
+                    <div class="grow"><strong>{{ p.nombre }}</strong><small>Proveedor · {{ p.rubro or "—" }}</small></div>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if r.disenos %}
+        <section class="panel span-6">
+            <div class="panel__head"><div><h2>Diseños</h2></div><span class="badge badge--neutral">{{ r.disenos | length }}</span></div>
+            <div class="lista-compacta">
+                {% for d in r.disenos %}
+                <a href="{{ url_for('catalogo.detalle', diseno_id=d.id) }}">
+                    <span class="kpi__icon"><i data-lucide="shirt"></i></span>
+                    <div class="grow"><strong>{{ d.nombre }}</strong><small>{{ d.tipo_prenda or "" }}{% if d.cliente %} · {{ d.cliente.nombre }}{% endif %}</small></div>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+    </div>
+{% else %}
+    <div class="panel"><p class="vacio">Escribe un folio, cliente o prenda para empezar.</p></div>
+{% endif %}
+{% endblock %}

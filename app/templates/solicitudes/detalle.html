@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+{% from "_macros.html" import boton_accion, badge_pedido, campo %}
+{% block title %}{{ sol.folio }}{% endblock %}
+
+{% set clases_estado = {"enviada": "badge--info", "aprobada": "badge--brand", "convertida": "badge--ok",
+                        "denegada": "badge--danger", "declinada": "badge--neutral", "cancelada": "badge--neutral"} %}
+{% set es_cliente = current_user.rol == 'cliente' %}
+{% set atiende = current_user.puede_atender_solicitudes %}
+{% set aprobando = atiende and sol.estado == 'enviada' %}
+{% set con_precios = sol.total is not none %}
+{% set pasos = [("enviada", "Propuesta", "send"), ("aprobada", "Cotización", "file-text"), ("convertida", "En producción", "factory")] %}
+{% set orden = {"enviada": 1, "aprobada": 2, "convertida": 3} %}
+
+{% block content %}
+<a href="{{ url_for('solicitudes.lista') }}" class="volver"><i data-lucide="arrow-left"></i> {{ 'Mis Solicitudes' if es_cliente else 'Solicitudes' }}</a>
+
+<div class="page-head">
+    <div>
+        <h1>{{ sol.folio }}</h1>
+        <p>
+            {% if not es_cliente %}{{ sol.cliente.nombre }} · {% endif %}{{ "{:,}".format(sol.total_prendas) }} prendas
+            {% if con_precios %} · {{ sol.total | dinero }} + IVA{% endif %}
+            <span class="badge {{ 'badge--warn' if sol.vencida else clases_estado.get(sol.estado, 'badge--neutral') }}">{{ sol.estado_legible }}</span>
+        </p>
+    </div>
+    <div class="page-head__acciones">
+        {% if es_cliente and sol.cancelable %}
+        {{ boton_accion(accion_form, url_for('solicitudes.cancelar', solicitud_id=sol.id), "Retirar propuesta", "x", "btn btn--outline",
+                        confirmar="¿Retirar esta propuesta? Tendrás que enviar una nueva si cambias de opinión.") }}
+        {% endif %}
+    </div>
+</div>
+
+{% if sol.estado in orden %}
+<ol class="pasos" aria-label="Avance de la solicitud">
+    {% for clave, nombre, icono in pasos %}
+    <li class="pasos__paso {% if orden[sol.estado] > loop.index %}pasos__paso--hecho{% elif orden[sol.estado] == loop.index %}pasos__paso--actual{% endif %}">
+        <span class="pasos__icono"><i data-lucide="{{ icono }}"></i></span>
+        <span>{{ nombre }}</span>
+    </li>
+    {% endfor %}
+    <li class="pasos__paso"><span class="pasos__icono"><i data-lucide="package-check"></i></span><span>Entregada</span></li>
+</ol>
+{% endif %}
+
+{% if sol.estado == 'denegada' %}
+<section class="panel">
+    <div class="rec rec--sugerencia" style="border-top: 0; border-left-color: var(--danger-text);">
+        <span class="rec__icono"><i data-lucide="circle-x"></i></span>
+        <div class="rec__cuerpo">
+            <div class="rec__titulo"><strong>Motivo de la denegación</strong></div>
+            <p style="white-space: pre-line;">{{ sol.respuesta }}</p>
+            {% if sol.atendida_por and not es_cliente %}<small class="muted">{{ sol.atendida_por.nombre }} · {{ sol.respondida_en | fecha_es }}</small>{% endif %}
+            {% if es_cliente %}<small class="muted">Una prenda denegada no puede entrar a producción. Puedes enviar una nueva propuesta con los cambios sugeridos.</small>{% endif %}
+        </div>
+    </div>
+</section>
+{% elif sol.estado == 'declinada' %}
+<section class="panel">
+    <div class="rec rec--sugerencia" style="border-top: 0;">
+        <span class="rec__icono"><i data-lucide="circle-slash"></i></span>
+        <div class="rec__cuerpo">
+            <div class="rec__titulo"><strong>El cliente declinó la cotización</strong></div>
+            <p style="white-space: pre-line;">{{ sol.motivo_cliente or "No indicó el motivo." }}</p>
+            {% if sol.decidida_en %}<small class="muted">{{ sol.decidida_en | fecha_es }}</small>{% endif %}
+        </div>
+    </div>
+</section>
+{% elif sol.respuesta %}
+<section class="panel">
+    <div class="rec rec--sugerencia" style="border-top: 0;">
+        <span class="rec__icono"><i data-lucide="message-square"></i></span>
+        <div class="rec__cuerpo">
+            <div class="rec__titulo"><strong>Mensaje de Arte y Color</strong></div>
+            <p style="white-space: pre-line;">{{ sol.respuesta }}</p>
+            {% if sol.atendida_por and not es_cliente %}<small class="muted">{{ sol.atendida_por.nombre }} · {{ sol.respondida_en | fecha_es }}</small>{% endif %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+{% if sol.condiciones or sol.lista_etiquetas %}
+<section class="panel">
+    <div class="rec rec--alerta" style="border-top: 0;">
+        <span class="rec__icono"><i data-lucide="file-check"></i></span>
+        <div class="rec__cuerpo">
+            <div class="rec__titulo"><strong>Condiciones de la aprobación</strong>
+                {% for e in sol.lista_etiquetas %}<span class="badge badge--warn">{{ e }}</span> {% endfor %}
+            </div>
+            {% if sol.condiciones %}<p style="white-space: pre-line;">{{ sol.condiciones }}</p>{% endif %}
+            {% if es_cliente and sol.estado == 'aprobada' %}<small class="muted">Al aceptar la cotización aceptas también estas condiciones.</small>{% endif %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+{% if sol.pedidos %}
+<section class="panel">
+    <div class="panel__head"><div><h2>Pedidos en producción</h2><p>Sigue cada pedido hasta su entrega</p></div></div>
+    <div class="lista-compacta">
+        {% for p in sol.pedidos %}
+        <a href="{{ url_for('rastreo.detalle', folio=p.folio) }}">
+            <span class="kpi__icon"><i data-lucide="package"></i></span>
+            <div class="grow"><strong>{{ p.folio }} · {{ p.modelo_prenda }}</strong>
+                <small>{{ "{:,}".format(p.cantidad) }} und. · entrega {{ p.fecha_limite | fecha_es }}</small></div>
+            {{ badge_pedido(p) }}
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<section class="panel">
+    <div class="doc-cabecera">
+        <div>
+            <p class="ficha__titulo">Cliente</p>
+            <h3 style="margin: 4px 0 6px;">{{ sol.cliente.nombre }}</h3>
+            <p class="muted small">
+                {% if sol.usuario %}Propuso: {{ sol.usuario.nombre }}{% if not es_cliente and sol.usuario.telefono %} · {{ sol.usuario.telefono }}{% endif %}{% endif %}
+            </p>
+        </div>
+        <dl>
+            <div><dt>Enviada</dt><dd>{{ sol.creado_en | fecha_es }}</dd></div>
+            <div><dt>Fecha deseada</dt><dd>{{ sol.fecha_deseada | fecha_es if sol.fecha_deseada else "Sin preferencia" }}</dd></div>
+            <div><dt>Entrega estimada</dt><dd>{{ sol.fecha_entrega | fecha_es if sol.fecha_entrega else "Al aprobar" }}</dd></div>
+            {% if sol.vence_en and sol.estado == 'aprobada' %}
+            <div><dt>Cotización vigente</dt>
+                <dd>{% if sol.vigente %}hasta el {{ sol.vence_en | fecha_es }} ({{ sol.dias_para_vencer }} día{{ 's' if sol.dias_para_vencer != 1 }}){% else %}venció el {{ sol.vence_en | fecha_es }}{% endif %}</dd></div>
+            {% endif %}
+        </dl>
+    </div>
+    <div class="tabla-wrap">
+        <table class="tabla-compacta">
+            <thead>
+                <tr><th>Prenda</th><th>Tallas</th><th>Colores</th><th class="num">Cantidad</th>
+                    {% if con_precios %}<th class="num">Precio unit.</th><th class="num">Importe</th>{% endif %}</tr>
+            </thead>
+            <tbody>
+                {% for l in sol.lineas %}
+                <tr>
+                    <td>
+                        <strong>{{ l.descripcion }}</strong>
+                        {% if l.diseno %}<br><a class="muted small" href="{{ url_for('catalogo.detalle', diseno_id=l.diseno.id, cantidad=l.cantidad) }}">Diseño: {{ l.diseno.nombre }}</a>{% endif %}
+                        {% if l.medidas %}<br><span class="small" style="white-space: pre-line;"><span class="muted">Medidas:</span> {{ l.medidas }}</span>{% endif %}
+                        {% if l.tramos | length > 1 %}
+                        <br><span class="small muted">Rebajas por cantidad:
+                            {% for t in l.tramos %}{% if not loop.first %}desde {{ "{:,}".format(t.desde_cantidad) }} → {{ t.precio_unitario | dinero }}{{ " · " if not loop.last }}{% endif %}{% endfor %}
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td>{{ l.tallas or "—" }}</td>
+                    <td>{{ l.colores or "—" }}</td>
+                    <td class="num">{{ "{:,}".format(l.cantidad) }}</td>
+                    {% if con_precios %}
+                    <td class="num">{{ l.precio_unitario | dinero }}</td>
+                    <td class="num"><strong>{{ l.importe | dinero }}</strong></td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="doc-pie" style="padding-top: 20px;">
+        <div class="doc-texto">
+            {% if sol.notas %}<p><strong>Indicaciones del cliente</strong>{{ sol.notas }}</p>{% endif %}
+        </div>
+        {% if con_precios %}
+        <div class="totales">
+            <div class="totales__total"><span>Total sin IVA</span><span>{{ sol.total | dinero }}</span></div>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+{# --- Decisión del cliente: la cotización solo pasa a producción si él la acepta --- #}
+{% if es_cliente and sol.estado == 'aprobada' %}
+    {% if sol.vigente %}
+    <section class="panel">
+        <div class="rec rec--sugerencia" style="border-top: 0; border-left-color: var(--ok-text);">
+            <span class="rec__icono" style="background: var(--ok-bg); color: var(--ok-text);"><i data-lucide="badge-check"></i></span>
+            <div class="rec__cuerpo">
+                <div class="rec__titulo"><strong>Tu cotización está lista</strong></div>
+                <p>{{ sol.total | dinero }} + IVA por {{ "{:,}".format(sol.total_prendas) }} prendas · entrega estimada {{ sol.fecha_entrega | fecha_es }}.
+                   Si la aceptas, tus pedidos entran a producción de inmediato y podrás rastrearlos. Vence el {{ sol.vence_en | fecha_es }}.</p>
+            </div>
+            {{ boton_accion(accion_form, url_for('solicitudes.aceptar', solicitud_id=sol.id), "Aceptar e iniciar producción", "check", "btn btn--primary",
+                            confirmar="¿Aceptar la cotización por " ~ (sol.total | dinero) ~ " + IVA? Tus prendas entrarán a producción.") }}
+        </div>
+    </section>
+    <details class="panel plegable">
+        <summary class="panel__head"><div><h2>Declinar la cotización</h2><p>Si el precio o las condiciones no te convencen, cuéntanos por qué</p></div><i data-lucide="chevron-down"></i></summary>
+        <form method="post" action="{{ url_for('solicitudes.declinar', solicitud_id=sol.id) }}" class="form" style="padding: 0 28px 24px;">
+            {{ declinar_form.hidden_tag() }}
+            {{ campo(declinar_form.motivo, rows="2", placeholder="Ej. El precio queda fuera de nuestro presupuesto para este año.") }}
+            <div class="form__acciones">
+                <button type="submit" class="btn btn--outline"><i data-lucide="circle-slash"></i> Declinar cotización</button>
+            </div>
+        </form>
+    </details>
+    {% else %}
+    <section class="panel">
+        <div class="rec rec--alerta" style="border-top: 0;">
+            <span class="rec__icono"><i data-lucide="alarm-clock"></i></span>
+            <div class="rec__cuerpo">
+                <div class="rec__titulo"><strong>Cotización vencida</strong></div>
+                <p>Venció el {{ sol.vence_en | fecha_es }}, así que ya no se puede aceptar. Escríbenos y la renovamos con precios al día.</p>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+{% endif %}
+
+{% if atiende and sol.vencida %}
+<section class="panel">
+    <div class="rec rec--alerta" style="border-top: 0;">
+        <span class="rec__icono"><i data-lucide="alarm-clock"></i></span>
+        <div class="rec__cuerpo">
+            <div class="rec__titulo"><strong>Cotización vencida</strong></div>
+            <p>El cliente ya no puede aceptarla. Renueva la vigencia por {{ vigencia_dias }} días más (se le avisa al cliente).</p>
+        </div>
+        {{ boton_accion(accion_form, url_for('solicitudes.renovar', solicitud_id=sol.id), "Renovar vigencia", "refresh-cw", "btn btn--primary") }}
+    </div>
+</section>
+{% endif %}
+
+{# --- Aprobación de la empresa: precios por cantidad + condiciones de cambio --- #}
+{% if aprobando %}
+<form method="post" action="{{ url_for('solicitudes.aprobar', solicitud_id=sol.id) }}" novalidate>
+{{ aprobar_form.hidden_tag() }}
+<section class="panel panel--form">
+    <div class="panel__head">
+        <div>
+            <h2>Aprobar con precios por cantidad</h2>
+            <p>Define el precio base de cada prenda y, si aplica, las rebajas por volumen. Se publicará una cotización con {{ vigencia_dias }} días de vigencia; el pedido se creará solo cuando el cliente la acepte.</p>
+        </div>
+    </div>
+    <div class="form">
+        {% for l in sol.lineas %}
+        {% set desdes = valores.getlist('tramo_desde_' ~ l.id) if valores else [] %}
+        {% set precios = valores.getlist('tramo_precio_' ~ l.id) if valores else [] %}
+        {% set sugerido = precios[0] if precios else (("%.2f" | format(l.diseno.precio_venta | float)) if l.diseno and l.diseno.tiene_precio else "") %}
+        <fieldset class="tramos">
+            <legend><strong>{{ loop.index }}. {{ l.descripcion }}</strong> · pidieron {{ "{:,}".format(l.cantidad) }} und.</legend>
+            <div class="tramos__fila">
+                <label>Desde <input class="input num" type="number" name="tramo_desde_{{ l.id }}" value="1" readonly aria-label="Tramo base desde 1 unidad"> und.</label>
+                <label>a $ <input class="input num" type="number" step="0.01" min="0.01" name="tramo_precio_{{ l.id }}" value="{{ sugerido }}" required placeholder="Precio base" aria-label="Precio base de {{ l.descripcion }}"> c/u</label>
+                <span class="muted small">Precio base</span>
+            </div>
+            {% for i in range(1, 3) %}
+            <div class="tramos__fila">
+                <label>Desde <input class="input num" type="number" name="tramo_desde_{{ l.id }}" min="2" value="{{ desdes[i] if desdes | length > i else '' }}" placeholder="p. ej. {{ 100 * i }}" aria-label="Rebaja {{ i }}: desde cuántas unidades"> und.</label>
+                <label>a $ <input class="input num" type="number" step="0.01" min="0.01" name="tramo_precio_{{ l.id }}" value="{{ precios[i] if precios | length > i else '' }}" placeholder="Precio rebajado" aria-label="Rebaja {{ i }}: precio unitario"> c/u</label>
+                <span class="muted small">Rebaja opcional</span>
+            </div>
+            {% endfor %}
+            <small class="ayuda">Deja vacías las rebajas que no apliquen. A las {{ "{:,}".format(l.cantidad) }} und. solicitadas se les aplicará el tramo que alcancen.</small>
+        </fieldset>
+        {% endfor %}
+
+        <div class="campo campo--full">
+            <label>Condiciones frecuentes (según las políticas de la empresa)</label>
+            <div class="etiquetas">
+                {% for e in etiquetas_condicion %}
+                <label class="etiqueta"><input type="checkbox" name="etiqueta" value="{{ e }}"
+                    {% if valores and e in valores.getlist('etiqueta') %}checked{% endif %}> {{ e }}</label>
+                {% endfor %}
+            </div>
+        </div>
+        {{ campo(aprobar_form.condiciones, "campo--full", rows="2", placeholder="Ej. Pedido mínimo de 50 unidades; el azul cielo se sustituye por azul cadete.") }}
+        <div class="form__grid">
+            {{ campo(aprobar_form.fecha_entrega, type="date") }}
+            {{ campo(aprobar_form.respuesta, rows="2", placeholder="Opcional. Ej. Incluye bordado; anticipo del 50 % para iniciar.") }}
+        </div>
+        <div class="form__acciones">
+            <button type="submit" class="btn btn--primary"><i data-lucide="badge-check"></i> Aprobar y publicar cotización</button>
+        </div>
+    </div>
+</section>
+</form>
+
+<details class="panel plegable">
+    <summary class="panel__head"><div><h2>Denegar la propuesta</h2><p>Explica el motivo al cliente; una prenda denegada no entra a producción</p></div><i data-lucide="chevron-down"></i></summary>
+    <form method="post" action="{{ url_for('solicitudes.denegar', solicitud_id=sol.id) }}" class="form" style="padding: 0 28px 24px;">
+        {{ denegar_form.hidden_tag() }}
+        {{ campo(denegar_form.respuesta, rows="2", placeholder="Ej. No manejamos ese tipo de tela; podemos ofrecerte gabardina.") }}
+        <div class="form__acciones">
+            <button type="submit" class="btn btn--danger"><i data-lucide="x"></i> Denegar propuesta</button>
+        </div>
+    </form>
+</details>
+{% endif %}
+{% endblock %}

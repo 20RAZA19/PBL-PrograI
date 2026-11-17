@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo, boton_accion %}
+{% block title %}Simulador del bot de WhatsApp{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Bot de WhatsApp</h1>
+        <p>Prueba aquí lo que respondería el bot a un cliente, sin WhatsApp real. Usa la misma lógica y deja el mismo rastro en la bitácora.</p>
+    </div>
+    <div class="chips-stats">
+        <div class="chip-stat">
+            {% if twilio_listo %}<span class="badge badge--ok">Twilio configurado</span>{% else %}<span class="badge badge--warn">Twilio sin configurar</span>{% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="dos-paneles">
+    <section class="panel">
+        <div class="panel__head">
+            <div>
+                <h2>Conversación simulada</h2>
+                <p>Escribe como lo haría el cliente desde su teléfono registrado</p>
+            </div>
+            {% if charla %}{{ boton_accion(form, url_for('whatsapp.simulador_limpiar'), "Reiniciar", "rotate-ccw") }}{% endif %}
+        </div>
+        <div class="wa-chat" id="wa-chat" aria-live="polite">
+            {% for m in charla %}
+            <div class="wa-msg wa-msg--{{ m.de }}">{{ m.texto }}</div>
+            {% else %}
+            <p class="vacio">Aún no hay mensajes. Prueba con <strong>MENÚ</strong>, <strong>ESTADO</strong> o <strong>TOKEN</strong>.</p>
+            {% endfor %}
+        </div>
+        <form method="post" novalidate>
+            <div class="form" style="padding-top: 16px;">
+                {{ form.hidden_tag() }}
+                <div class="form__grid">
+                    {{ campo(form.telefono, placeholder="+503 2243 1100") }}
+                    {{ campo(form.mensaje, placeholder="ESTADO") }}
+                </div>
+                <div class="wa-chips">
+                    {% for c in ("MENÚ", "ESTADO", "TOKEN", "NUEVO TOKEN") %}
+                    <button type="button" class="asistente__chip" data-cmd="{{ c }}">{{ c }}</button>
+                    {% endfor %}
+                </div>
+                <div class="form__acciones" style="margin-top: 16px;">
+                    <button type="submit" class="btn btn--primary"><i data-lucide="send-horizontal"></i> Enviar</button>
+                </div>
+            </div>
+        </form>
+    </section>
+
+    <aside class="panel">
+        <div class="panel__head"><div><h2>Cómo conectarlo a WhatsApp real</h2><p>Twilio WhatsApp Sandbox</p></div></div>
+        <ol class="wa-pasos">
+            <li>Crea una cuenta en <strong>twilio.com</strong> y abre <em>Messaging → Try it out → Send a WhatsApp message</em>.</li>
+            <li>Une tu teléfono al sandbox enviando el código que te indica (por ejemplo <code>join &lt;palabra&gt;</code>) al número de Twilio.</li>
+            <li>En <em>Sandbox settings</em>, pega esta URL en «When a message comes in» (método POST):<br>
+                <code class="wa-url">{{ url_webhook }}</code></li>
+            <li>En el servidor define <code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code> y <code>TWILIO_WHATSAPP_FROM</code> en el archivo <code>.env</code> y recarga la app.</li>
+            <li>Cada cliente debe tener su número en <strong>Gestión de usuarios → editar cliente → teléfono</strong>, con código de país.</li>
+        </ol>
+        <p class="small muted">El webhook rechaza cualquier petición sin la firma de Twilio. Mientras Twilio no esté configurado responde 503 y solo funciona este simulador.
+            En PythonAnywhere gratuito el bot responde a los mensajes que recibe; los avisos por iniciativa propia (<code>WHATSAPP_AVISOS=1</code>) requieren salida a internet.</p>
+        <h3 style="margin-top: 16px;">Comandos</h3>
+        <table class="wa-comandos">
+            <tr><td><strong>ESTADO</strong></td><td>Avance de los pedidos de su empresa, sin precios.</td></tr>
+            <tr><td><strong>TOKEN</strong></td><td>Su llave de seguimiento (la crea si no existe).</td></tr>
+            <tr><td><strong>NUEVO TOKEN</strong></td><td>Reemplaza la llave; la anterior deja de servir.</td></tr>
+            <tr><td><strong>RECUPERAR</strong></td><td>Indica que la contraseña se recupera por correo en el sitio.</td></tr>
+            <tr><td><strong>MENÚ</strong></td><td>Lista de opciones (también ante cualquier otro texto).</td></tr>
+        </table>
+    </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        const chat = document.getElementById('wa-chat');
+        if (chat) chat.scrollTop = chat.scrollHeight;
+        const entrada = document.getElementById('{{ form.mensaje.id }}');
+        document.querySelectorAll('.wa-chips [data-cmd]').forEach(function (b) {
+            b.addEventListener('click', function () { entrada.value = b.dataset.cmd; entrada.focus(); });
+        });
+    })();
+</script>
+{% endblock %}

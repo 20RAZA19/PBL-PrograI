@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo, casilla, boton_accion %}
+{% block title %}Editar {{ usuario.nombre }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('admin.usuarios', vista='todos') }}" class="volver"><i data-lucide="arrow-left"></i> Gestión de Usuarios</a>
+
+<div class="page-head">
+    <div class="detalle-head">
+        <span class="avatar avatar--lg">{{ usuario.iniciales }}</span>
+        <div>
+            <h1>{{ usuario.nombre }}</h1>
+            <p>{{ usuario.email }} · Alta {{ usuario.creado_en | fecha_es }}</p>
+        </div>
+    </div>
+</div>
+
+{% if es_uno_mismo %}
+<div class="flash flash--info" style="margin-bottom: 24px;"><i data-lucide="info"></i> Estás editando tu propia cuenta: no puedes quitarte el rol de administrador ni desactivarla.</div>
+{% endif %}
+
+<section class="panel panel--form">
+    <form method="post" class="form" novalidate>
+        {{ form.hidden_tag() }}
+        <div class="form__grid">
+            <p class="form__seccion">Datos del usuario</p>
+            {{ campo(form.nombre, "campo--full") }}
+            {{ campo(form.email) }}
+            {{ campo(form.telefono) }}
+            {{ campo(form.cargo, "campo--full", placeholder="Ej. Cortador, Supervisora, Compras") }}
+
+            <p class="form__seccion">Permisos</p>
+            {{ campo(form.rol) }}
+            {{ campo(form.estado_permiso) }}
+            <div id="bloque-empresa" class="campo--full">
+                {{ campo(form.cliente_id) }}
+            </div>
+            {{ casilla(form.activo, "Si se desmarca, el usuario no podrá iniciar sesión y su sesión actual se cerrará.", "campo--full") }}
+        </div>
+        <div class="form__acciones">
+            <a href="{{ url_for('admin.usuarios', vista='todos') }}" class="btn btn--outline">Cancelar</a>
+            {{ form.submit(class_="btn btn--primary") }}
+        </div>
+    </form>
+</section>
+
+{% if usuario.rol == 'cliente' %}
+<section class="panel" id="token">
+    <div class="panel__head">
+        <div>
+            <h2>Token de seguimiento</h2>
+            <p>Llave de solo lectura: con ella y los últimos 4 dígitos de su teléfono, el cliente consulta el estado de sus pedidos en
+               <a href="{{ url_for('seguimiento.consulta') }}" style="color: var(--primary); font-weight: 600;">{{ url_for('seguimiento.consulta') }}</a> sin iniciar sesión. No permite solicitar ni ver precios.</p>
+        </div>
+    </div>
+    <div class="token-caja">
+        {% if usuario.token_seguimiento %}
+            <code>{{ usuario.token_seguimiento }}</code>
+            {{ boton_accion(accion_form, url_for('admin.token_usuario', usuario_id=usuario.id), "Regenerar", "refresh-cw", "btn btn--outline btn--sm",
+                            confirmar="El token actual dejará de funcionar y tendrás que entregar el nuevo al cliente. ¿Continuar?") }}
+            <span class="muted small">Entrégalo solo a {{ usuario.nombre.split()[0] }} (teléfono terminado en {{ usuario.telefono_digitos[-4:] or "—" }}).</span>
+        {% elif usuario.telefono_digitos | length < 4 %}
+            <span class="badge badge--warn">Falta el teléfono</span>
+            <span class="muted small">Registra el teléfono del cliente arriba para poder generar su token.</span>
+        {% else %}
+            {{ boton_accion(accion_form, url_for('admin.token_usuario', usuario_id=usuario.id), "Generar token", "key-round", "btn btn--primary btn--sm") }}
+            <span class="muted small">Aún no tiene token.</span>
+        {% endif %}
+    </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        const rol = document.getElementById('{{ form.rol.id }}');
+        const bloque = document.getElementById('bloque-empresa');
+        function actualizar() { bloque.style.display = rol.value === 'cliente' ? '' : 'none'; }
+        rol.addEventListener('change', actualizar);
+        actualizar();
+    })();
+</script>
+{% endblock %}

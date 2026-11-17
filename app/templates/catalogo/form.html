@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo, casilla %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+{% set volver = url_for('catalogo.detalle', diseno_id=diseno.id) if diseno else url_for('catalogo.lista') %}
+<a href="{{ volver }}" class="volver"><i data-lucide="arrow-left"></i> {{ diseno.nombre if diseno else 'Catálogo' }}</a>
+<div class="page-head">
+    <div>
+        <h1>{{ titulo }}</h1>
+        <p>La ficha técnica indica cuánto de cada insumo lleva una prenda (en la unidad del insumo). Con eso se calcula el costo por prenda y lo que hay que comprar.</p>
+    </div>
+</div>
+
+<form method="post" enctype="multipart/form-data" novalidate>
+    {{ form.hidden_tag() }}
+    <section class="panel panel--form">
+        <div class="form">
+            <p class="form__seccion">Datos del diseño</p>
+            <div class="form__grid">
+                {{ campo(form.nombre, "campo--full", placeholder="Ej. Polo Corporativo Verde 2026") }}
+                {{ campo(form.cliente_id) }}
+                {{ campo(form.tipo_prenda, placeholder="Ej. Polo manga corta") }}
+                {{ campo(form.tallas, placeholder="S, M, L, XL") }}
+                <div class="campo">
+                    {{ form.imagen.label }}
+                    {% if diseno and diseno.imagen %}
+                    <div class="foto-actual">
+                        <img src="{{ url_for('static', filename=diseno.imagen) }}" alt="Foto actual">
+                        <label class="small flex" style="gap: 6px;">{{ form.quitar_imagen() }} {{ form.quitar_imagen.label.text }}</label>
+                    </div>
+                    {% endif %}
+                    {{ form.imagen(class_="input" ~ (" input--error" if form.imagen.errors else ""), accept="image/png,image/jpeg,image/webp,image/gif") }}
+                    <small class="ayuda">PNG, JPG, WEBP o GIF · máximo 5 MB. El taller la usa para reconocer la prenda.</small>
+                    {% for e in form.imagen.errors %}<small class="error">{{ e }}</small>{% endfor %}
+                </div>
+            </div>
+
+            <p class="form__seccion" style="margin-top: 26px;">Precio y costos</p>
+            <div class="form__grid">
+                {{ campo(form.precio_venta, step="0.01", min="0", placeholder="Ej. 14.50") }}
+                {{ campo(form.costo_mano_obra, step="0.01", min="0") }}
+            </div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel__head">
+            <div><h2>Ficha técnica</h2><p>Telas, hilos, botones y avíos por prenda</p></div>
+            <button type="button" class="btn btn--outline btn--sm" id="agregar-fila"><i data-lucide="plus"></i> Agregar insumo</button>
+        </div>
+        <div class="tabla-wrap">
+            <table class="editor-lineas">
+                <thead><tr><th>Insumo</th><th style="width: 18%;" class="num">Cantidad por prenda</th><th style="width: 14%;" class="num">Costo unit.</th><th style="width: 14%;" class="num">Subtotal</th><th style="width: 44px;"></th></tr></thead>
+                <tbody id="ficha"></tbody>
+                <tfoot>
+                    <tr><td colspan="3" class="num">Materiales por prenda</td><td class="num"><strong id="f-materiales">$0.00</strong></td><td></td></tr>
+                    <tr><td colspan="3" class="num">+ Mano de obra</td><td class="num" id="f-mano">$0.00</td><td></td></tr>
+                    <tr><td colspan="3" class="num"><strong>Costo total por prenda</strong></td><td class="num"><strong id="f-total">$0.00</strong></td><td></td></tr>
+                    <tr><td colspan="3" class="num">Ganancia por prenda</td><td class="num" id="f-ganancia">—</td><td></td></tr>
+                </tfoot>
+            </table>
+        </div>
+        <div class="form__acciones" style="padding: 0 24px 24px;">
+            <a href="{{ volver }}" class="btn btn--outline">Cancelar</a>
+            <button type="submit" class="btn btn--primary"><i data-lucide="save"></i> Guardar diseño</button>
+        </div>
+    </section>
+</form>
+
+<template id="plantilla-fila">
+    <tr>
+        <td><select name="ficha_insumo" class="input" aria-label="Insumo"><option value="">— Elige un insumo —</option></select></td>
+        <td class="num"><div class="flex" style="gap: 6px; justify-content: flex-end;"><input name="ficha_cantidad" class="input num" type="number" min="0" step="0.001" placeholder="0" aria-label="Cantidad por prenda"><span class="muted small unidad"></span></div></td>
+        <td class="num costo importe" style="padding-top: 20px;">—</td>
+        <td class="num subtotal importe">$0.00</td>
+        <td><button type="button" class="btn-icono editor-lineas__quitar" title="Quitar" aria-label="Quitar insumo"><i data-lucide="trash-2"></i></button></td>
+    </tr>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const insumos = {{ insumos | tojson }};
+    const iniciales = {{ ficha | tojson }};
+    const cuerpo = document.getElementById('ficha');
+    const plantilla = document.getElementById('plantilla-fila');
+    const precio = document.getElementById('{{ form.precio_venta.id }}');
+    const mano = document.getElementById('{{ form.costo_mano_obra.id }}');
+    const dinero = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+    const unidades = { Metros: 'm', Yardas: 'yd', Unidades: 'und.', Conos: 'conos', Rollos: 'rollos', Docenas: 'doc.' };
+    const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+
+    function agregar(datos) {
+        const fila = plantilla.content.firstElementChild.cloneNode(true);
+        const sel = fila.querySelector('select');
+        let grupo = null, optgroup = null;
+        insumos.forEach((i) => {
+            if (i.categoria !== grupo) {
+                grupo = i.categoria;
+                optgroup = document.createElement('optgroup');
+                optgroup.label = grupo;
+                sel.appendChild(optgroup);
+            }
+            const o = document.createElement('option');
+            o.value = i.id;
+            o.textContent = i.nombre + (i.costo ? '' : ' (sin costo)');
+            if (datos && String(datos.insumo_id) === String(i.id)) o.selected = true;
+            optgroup.appendChild(o);
+        });
+        if (datos && datos.cantidad != null) fila.querySelector('[name=ficha_cantidad]').value = datos.cantidad;
+        fila.addEventListener('input', calcular);
+        fila.addEventListener('change', calcular);
+        fila.querySelector('.editor-lineas__quitar').addEventListener('click', () => { fila.remove(); calcular(); });
+        cuerpo.appendChild(fila);
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function calcular() {
+        let materiales = 0;
+        cuerpo.querySelectorAll('tr').forEach((fila) => {
+            const i = insumos.find((x) => String(x.id) === fila.querySelector('select').value);
+            const cant = num(fila.querySelector('[name=ficha_cantidad]').value);
+            fila.querySelector('.unidad').textContent = i ? (unidades[i.unidad] || i.unidad) : '';
+            fila.querySelector('.costo').textContent = i ? (i.costo ? dinero.format(i.costo) : 'sin costo') : '—';
+            const sub = i ? cant * i.costo : 0;
+            fila.querySelector('.subtotal').textContent = dinero.format(sub);
+            materiales += sub;
+        });
+        const total = materiales + num(mano.value);
+        document.getElementById('f-materiales').textContent = dinero.format(materiales);
+        document.getElementById('f-mano').textContent = dinero.format(num(mano.value));
+        document.getElementById('f-total').textContent = dinero.format(total);
+        const p = num(precio.value);
+        const g = document.getElementById('f-ganancia');
+        if (p > 0) {
+            const ganancia = p - total;
+            g.innerHTML = '<strong class="' + (ganancia / p < 0.15 ? 'negativo' : 'positivo') + '">' + dinero.format(ganancia) +
+                ' (' + (ganancia / p * 100).toFixed(1) + ' %)</strong>';
+        } else {
+            g.textContent = 'Asigna un precio de venta';
+        }
+    }
+
+    (iniciales.length ? iniciales : [null]).forEach(agregar);
+    document.getElementById('agregar-fila').addEventListener('click', () => agregar());
+    [precio, mano].forEach((el) => el.addEventListener('input', calcular));
+    calcular();
+})();
+</script>
+{% endblock %}

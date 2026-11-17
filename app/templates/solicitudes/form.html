@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo %}
+{% block title %}Solicitar prendas{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('solicitudes.lista') }}" class="volver"><i data-lucide="arrow-left"></i> Mis Solicitudes</a>
+
+<div class="page-head">
+    <div>
+        <h1>Solicitar prendas</h1>
+        <p>Dinos qué necesitas. Revisaremos tu propuesta y, si la aprobamos, verás una cotización con precios por cantidad; al aceptarla, tus prendas entran a producción.</p>
+    </div>
+</div>
+
+<form method="post" novalidate>
+    {{ form.hidden_tag() }}
+
+    <section class="panel">
+        <div class="panel__head">
+            <div>
+                <h2>Prendas</h2>
+                <p>Elige uno de tus diseños o describe una prenda nueva</p>
+            </div>
+            <button type="button" class="btn btn--outline btn--sm" id="agregar-linea"><i data-lucide="plus"></i> Agregar prenda</button>
+        </div>
+        <div class="solicitud-lineas" id="lineas"></div>
+    </section>
+
+    <section class="panel panel--form">
+        <div class="form">
+            <div class="form__grid">
+                {{ campo(form.fecha_deseada, type="date") }}
+                {{ campo(form.notas, "campo--full", rows="3", placeholder="Ej. Bordado del logo en el pecho izquierdo; entregar en la sede central.") }}
+            </div>
+            <div class="form__acciones">
+                <a href="{{ url_for('solicitudes.lista') }}" class="btn btn--outline">Cancelar</a>
+                <button type="submit" class="btn btn--primary"><i data-lucide="send"></i> Enviar solicitud</button>
+            </div>
+        </div>
+    </section>
+</form>
+
+<template id="plantilla-linea">
+    <fieldset class="solicitud-linea">
+        <legend>Prenda <span class="solicitud-linea__n"></span></legend>
+        <button type="button" class="btn-icono solicitud-linea__quitar" title="Quitar prenda" aria-label="Quitar prenda"><i data-lucide="trash-2"></i></button>
+        <div class="form__grid">
+            <div class="campo">
+                <label>Diseño</label>
+                <select name="linea_diseno" class="input">
+                    <option value="">— Prenda nueva o a la medida —</option>
+                </select>
+            </div>
+            <div class="campo">
+                <label>Prenda</label>
+                <input name="linea_descripcion" class="input" maxlength="200" placeholder="Ej. Camisa Oxford manga larga">
+            </div>
+            <div class="campo">
+                <label>Cantidad</label>
+                <input name="linea_cantidad" class="input" type="number" min="1" max="100000" step="1" placeholder="0" inputmode="numeric">
+            </div>
+            <div class="campo">
+                <label>Tallas</label>
+                <input name="linea_tallas" class="input" maxlength="100" placeholder="Ej. 20 S, 50 M, 30 L">
+            </div>
+            <div class="campo">
+                <label>Colores</label>
+                <input name="linea_colores" class="input" maxlength="100" placeholder="Ej. Azul marino con vivos blancos">
+            </div>
+            <div class="campo campo--full">
+                <label>Medidas o indicaciones</label>
+                <textarea name="linea_medidas" class="input" rows="2" maxlength="500" placeholder="Ej. Largo de manga 62 cm, pecho 104 cm; tela antifluido."></textarea>
+            </div>
+        </div>
+    </fieldset>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const disenos = {{ disenos | tojson }};
+    const iniciales = {{ lineas | tojson }};
+    const cuerpo = document.getElementById('lineas');
+    const plantilla = document.getElementById('plantilla-linea');
+
+    function numerar() {
+        cuerpo.querySelectorAll('.solicitud-linea').forEach((f, i) => {
+            f.querySelector('.solicitud-linea__n').textContent = i + 1;
+            f.querySelector('.solicitud-linea__quitar').hidden = cuerpo.children.length === 1;
+        });
+    }
+
+    function agregar(datos) {
+        const fila = plantilla.content.firstElementChild.cloneNode(true);
+        const sel = fila.querySelector('[name=linea_diseno]');
+        disenos.forEach((d) => {
+            const o = document.createElement('option');
+            o.value = d.id;
+            o.textContent = d.nombre;
+            if (datos && String(d.id) === String(datos.diseno_id)) o.selected = true;
+            sel.appendChild(o);
+        });
+        if (!disenos.length) sel.closest('.campo').hidden = true;
+        if (datos) {
+            ['descripcion', 'cantidad', 'tallas', 'colores', 'medidas'].forEach((c) => {
+                fila.querySelector('[name=linea_' + c + ']').value = datos[c] != null ? datos[c] : '';
+            });
+        }
+        sel.addEventListener('change', () => {
+            const d = disenos.find((x) => String(x.id) === sel.value);
+            if (!d) return;
+            fila.querySelector('[name=linea_descripcion]').value = d.nombre;
+            if (d.tallas && !fila.querySelector('[name=linea_tallas]').value) fila.querySelector('[name=linea_tallas]').value = d.tallas;
+        });
+        fila.querySelector('.solicitud-linea__quitar').addEventListener('click', () => { fila.remove(); numerar(); });
+        cuerpo.appendChild(fila);
+        numerar();
+        if (window.lucide) lucide.createIcons();
+    }
+
+    (iniciales.length ? iniciales : [null]).forEach(agregar);
+    document.getElementById('agregar-linea').addEventListener('click', () => {
+        agregar();
+        cuerpo.lastElementChild.querySelector('[name=linea_descripcion]').focus();
+    });
+})();
+</script>
+{% endblock %}

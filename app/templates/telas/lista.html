@@ -1,41 +1,143 @@
 {% extends "base.html" %}
-{% block title %}Materia Prima{% endblock %}
+{% block title %}Inventario de Insumos{% endblock %}
 
 {% block content %}
 <div class="page-head">
     <div>
-        <h1>Materia Prima (Telas)</h1>
-        <p>Telas e hilos registrados en el inventario</p>
+        <h1>Gestión de Inventario</h1>
+        <p>Control centralizado de telas, hilos, botones y materiales de confección.</p>
     </div>
+    {% if current_user.puede_editar_inventario %}
     <div class="page-head__acciones">
         <a href="{{ url_for('telas.movimiento') }}" class="btn btn--outline">
-            <i data-lucide="arrow-left-right"></i> Registrar Movimiento
+            <i data-lucide="arrow-right-left"></i> Registrar Movimiento
         </a>
         <a href="{{ url_for('telas.nueva') }}" class="btn btn--primary">
-            <i data-lucide="plus"></i> Nueva Tela
+            <i data-lucide="plus"></i> Nuevo Insumo
         </a>
     </div>
+    {% else %}
+    <span class="badge badge--neutral"><i data-lucide="eye"></i> Solo consulta</span>
+    {% endif %}
 </div>
 
-<section class="panel">
+<div class="panel">
     <div class="panel__head">
-        <form class="search" method="get">
+        <form method="get" class="search" style="max-width: 500px;">
             <i data-lucide="search"></i>
-            <input type="text" name="q" value="{{ q }}" placeholder="Buscar tela o código Pantone...">
+            <input type="text" name="q" value="{{ q }}" placeholder="Buscar por código, nombre, Pantone o categoría...">
             {% if estado %}<input type="hidden" name="estado" value="{{ estado }}">{% endif %}
+            {% if categoria %}<input type="hidden" name="categoria" value="{{ categoria }}">{% endif %}
         </form>
-        <form method="get" class="filtro">
-            <i data-lucide="filter"></i>
-            {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
-            <select name="estado" onchange="this.form.submit()">
-                <option value="">Todos los estados</option>
-                {% for e in ["Disponible", "Stock Bajo", "Crítico"] %}
-                    <option value="{{ e }}" {% if estado == e %}selected{% endif %}>{{ e }}</option>
-                {% endfor %}
-            </select>
-        </form>
+
+        <div class="flex flex--wrap">
+            <form method="get" class="filtro">
+                <i data-lucide="layers"></i>
+                {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+                {% if estado %}<input type="hidden" name="estado" value="{{ estado }}">{% endif %}
+                <select name="categoria" onchange="this.form.submit()" aria-label="Categoría">
+                    <option value="">Todas las categorías</option>
+                    {% for c in categorias %}
+                        <option value="{{ c }}" {% if categoria == c %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+
+            <form method="get" class="filtro">
+                <i data-lucide="filter"></i>
+                {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+                {% if categoria %}<input type="hidden" name="categoria" value="{{ categoria }}">{% endif %}
+                <select name="estado" onchange="this.form.submit()" aria-label="Estado de stock">
+                    <option value="">Todos los estados</option>
+                    <option value="Disponible" {% if estado == 'Disponible' %}selected{% endif %}>Disponible</option>
+                    <option value="Stock Bajo" {% if estado == 'Stock Bajo' %}selected{% endif %}>Stock Bajo</option>
+                    <option value="Crítico" {% if estado == 'Crítico' %}selected{% endif %}>Crítico</option>
+                </select>
+            </form>
+
+            <a href="{{ url_for('telas.lista', q=q or None, estado=estado or None, categoria=categoria or None, inactivos=None if ver_inactivos else '1') }}" class="btn btn--outline btn--sm">
+                <i data-lucide="{{ 'eye-off' if ver_inactivos else 'archive-restore' }}"></i> {{ 'Ocultar inactivos' if ver_inactivos else 'Ver inactivos' }}
+            </a>
+        </div>
     </div>
 
-    {% include "telas/_tabla.html" %}
-</section>
+    <div class="tabla-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Insumo / Material</th>
+                    <th>Categoría</th>
+                    <th>Disponibilidad</th>
+                    <th>Estado de Stock</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in telas %}
+                <tr>
+                    <td><span class="chip">{{ item.codigo or 'N/A' }}</span></td>
+                    <td>
+                        <a class="tela" href="{{ url_for('telas.detalle', tela_id=item.id) }}">
+                            <div class="muestra" style="background-color: {{ item.color_hex }};"></div>
+                            <div>
+                                <strong>{{ item.nombre }}</strong>
+                                <span class="muted small">{{ item.codigo_pantone or item.tipo }}{% if not item.activo %} · Inactivo{% endif %}</span>
+                            </div>
+                        </a>
+                    </td>
+                    <td>{{ item.categoria }}</td>
+                    <td>
+                        <strong>{{ item.cantidad_disponible | metros }}</strong> <span style="font-size: 13px; color: var(--texto-suave);">{{ item.unidad_medida }}</span>
+                    </td>
+                    <td>
+                        {% if item.alerta_stock == 'critico' %}
+                            <span class="badge badge--danger">Crítico</span>
+                        {% elif item.alerta_stock == 'bajo' %}
+                            <span class="badge badge--warn">Stock Bajo</span>
+                        {% else %}
+                            <span class="badge badge--ok">Disponible</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <details class="menu">
+                            <summary class="btn-icono" aria-label="Acciones"><i data-lucide="more-vertical"></i></summary>
+                            <div class="menu__lista">
+                                <a href="{{ url_for('telas.detalle', tela_id=item.id) }}"><i data-lucide="history"></i> Ver Historial</a>
+                                {% if current_user.puede_editar_inventario %}
+                                <a href="{{ url_for('telas.editar', tela_id=item.id) }}"><i data-lucide="edit"></i> Editar Insumo</a>
+                                {% if item.activo %}
+                                <a href="{{ url_for('telas.movimiento', tela_id=item.id, tipo='entrada') }}"><i data-lucide="arrow-down-to-line"></i> Registrar entrada</a>
+                                <a href="{{ url_for('telas.movimiento', tela_id=item.id, tipo='salida') }}"><i data-lucide="arrow-up-from-line"></i> Registrar salida</a>
+                                {% endif %}
+                                {% endif %}
+                            </div>
+                        </details>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6">
+                        <div class="vacio">
+                            <i data-lucide="package-x" style="width: 48px; height: 48px; margin-bottom: 16px; opacity: 0.5;"></i>
+                            {% if q %}
+                                <p>No encontramos «{{ q }}» en el inventario.</p>
+                                {% if current_user.puede_editar_inventario %}
+                                <a href="{{ url_for('telas.nueva', nombre=q, categoria=categoria or None) }}" class="btn btn--primary" style="margin-top: 16px;">
+                                    <i data-lucide="plus"></i> Registrar «{{ q }}» como nuevo insumo
+                                </a>
+                                {% else %}
+                                <p class="small" style="margin-top: 8px;">Pide al Encargado de Taller que lo registre.</p>
+                                {% endif %}
+                            {% else %}
+                                <p>No se encontraron insumos en el inventario.</p>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 {% endblock %}
