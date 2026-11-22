@@ -1,4 +1,4 @@
-# PBL-Progral — AyC Control
+# PBL-PrograI — AyC Control
 
 Sistema de gestión de inventario, producción y rastreo de pedidos para **Arte y Color**.
 
@@ -6,16 +6,16 @@ Sistema de gestión de inventario, producción y rastreo de pedidos para **Arte 
 1. `python -m venv venv`
 2. `venv\Scripts\Activate`
 3. `pip install -r requirements.txt`
-4. `flask db upgrade` &nbsp;← aplica las migraciones (rastreo, contactos, cotizaciones, compras, calidad, notificaciones y bitácora)
+4. `flask db upgrade` &nbsp;← aplica las migraciones (rastreo, contactos, cotizaciones, compras, calidad, notificaciones, bitácora, WhatsApp y mensajes, solicitudes con aprobación, metas e incentivos y periodo de metas)
 5. `flask seed` &nbsp;← datos mínimos de ejemplo (idempotente, solo crea lo que falte)
-6. *(Opcional)* `flask demo` &nbsp;← datos de **demostración** para presentar el sistema: clientes, proveedores, insumos con costo y foto, diseños con precio y ficha completa, pedidos con recorrido en el mapa, seis meses de historial para los gráficos, cotizaciones, órdenes de compra, registros de calidad, **solicitudes de prendas en todos sus estados** (pendiente, cotización lista, en producción, denegada, declinada y vencida) y **tokens de seguimiento** para los dos clientes. No duplica nada: si ya lo corriste antes, solo completa lo nuevo. Al terminar imprime el token y los últimos 4 dígitos de cada cliente para probar `/seguimiento`.
+6. *(Opcional)* `flask demo` &nbsp;← datos de **demostración** para presentar el sistema: clientes, proveedores, insumos con costo y foto, diseños con precio y ficha completa, pedidos con recorrido en el mapa, seis meses de historial para los gráficos, cotizaciones, órdenes de compra, registros de calidad, **solicitudes de prendas en todos sus estados** (pendiente, cotización lista, en producción, denegada, declinada y vencida) **tokens de seguimiento** para los dos clientes, **metas e incentivos** de ejemplo (con y sin periodo) y conversaciones con el asistente de ventas. No duplica nada: si ya lo corriste antes, solo completa lo nuevo. Al terminar imprime el token y los últimos 4 dígitos de cada cliente para probar `/seguimiento`.
 7. `python run.py`
 8. `python -m pytest` &nbsp;← corre las pruebas automáticas (ver más abajo)
 
 ## Cuentas de prueba (después de `flask seed`)
 | Rol | Usuario | Contraseña |
 |---|---|---|
-| Administrador | `admin123` | `admin123` |
+| Administrador *(solo en tu computadora; en el servidor ver la nota de abajo)* | `admin123` | `admin123` |
 | Encargado de Taller | `gestor@arteycolor.com` | `gestor123` |
 | Asistente de Ventas *(con `flask demo`)* | `ventas@arteycolor.com` | `ventas123` |
 | Cliente | `cliente@banconacional.com` | `cliente123` |
@@ -42,6 +42,8 @@ Roles según la sección 3 del documento de requerimientos.
 | Catálogo de diseños | `/catalogo/` | ✔ | ✔ | ✔ | su empresa |
 | Búsqueda global | `/reportes/buscar` | ✔ | ✔ | ✔ | sus pedidos |
 | Reportes globales + exportar CSV | `/reportes/` | ✔ | — | — | — |
+| Metas e incentivos: mis metas | `/metas/` | — | ✔ | ✔ | — |
+| Metas e incentivos: equipo, crear, editar, activar, cerrar mes y pagar | `/metas/equipo` | ✔ | — | — | — |
 | Gestión de usuarios | `/admin/usuarios` | ✔ | — | — | — |
 | Asistente virtual (botón «¿Necesitas ayuda?») | `/asistente/preguntar` | ✔ | ✔ | ✔ | ✔ |
 | Solicitudes de prendas: consultar | `/solicitudes/` | ✔ | ✔ | ✔ | las suyas |
@@ -81,9 +83,25 @@ Lo primero que ve el equipo al entrar:
   pedidos sin avance en 7 días, márgenes menores al 15 %, diseños sin costo, concentración en un solo
   cliente, cotizaciones por vencer, proveedores atrasados, puntualidad baja y solicitudes de acceso.
   Cada rol ve solo lo que le corresponde.
-- **Gráficos con Chart.js**: pedidos por mes (barras + línea de prendas), consumo de telas por mes
-  (una línea por tela con su color) y, para Administración y Ventas, ventas y ganancia estimada.
-  Chart.js se carga desde cdnjs; sin internet se muestra un aviso en lugar del gráfico.
+- **Gráficos con Chart.js** (se cargan desde cdnjs solo en las páginas que los usan; sin internet se muestra un aviso en lugar del gráfico):
+  - *Reportes*: pedidos por estado, entregas a tiempo, pedidos por mes, prendas, consumo de telas y, para Administración y Ventas, finanzas. Todo sigue el periodo elegido (7, 30, 90 o 365 días) y compara las cifras con el periodo anterior.
+  - *Dashboard del cliente*: pedidos por fase, prendas por mes y porcentaje de entregas a tiempo.
+  - *Telas*: existencia de los últimos 60 días frente al stock mínimo.
+  - *Solicitudes*: solicitudes recibidas y aceptadas por semana.
+  - *Costos*: los 10 pedidos con menor margen.
+  - *Bitácora*: actividad de los últimos 14 días y módulos con más cambios.
+  - *Metas*: incentivo por persona e historial.
+  - Cada gráfico tiene «Ver datos» para ver las cifras en tabla. Los colores se distinguen también con daltonismo.
+
+### Metas e incentivos
+Cada meta mide un indicador («Qué se mide») y el indicador define el área: Taller (gestor) o Ventas.
+«Para quién» solo muestra personas de esa área, y el servidor lo valida también.
+
+- **Indicadores de Taller:** prendas entregadas, prendas terminadas, avances de fase, entregas a tiempo y prendas con defecto (de todo el taller).
+- **Indicadores de Ventas:** solicitudes respondidas, solicitudes que pasaron a producción, monto vendido y tiempo de respuesta promedio.
+- **Periodo:** cada meta tiene «Desde» y «Hasta» (máximo 366 días). Solo cuentan los hechos dentro del periodo; por ejemplo, un pedido que se entregó antes del periodo no suma en «Prendas entregadas».
+- **Pago:** una meta se paga al cerrar el mes en que termina su periodo. Administración cierra el mes en **Metas e incentivos** y puede exportar el resumen en CSV (`/metas/equipo.csv`).
+- Taller y Ventas ven sus metas en **Mis metas**, con el avance del mes y el historial de incentivos.
 
 ### Costo por prenda
 `costo = Σ (cantidad del insumo en la ficha técnica × costo unitario del insumo) + mano de obra`.
@@ -115,6 +133,7 @@ De evento: cambio de fase del pedido (para el cliente), cotización recibida / r
 `app/auditoria.py` escucha cada guardado de SQLAlchemy dentro de una petición y registra quién creó,
 editó o eliminó cada registro, con los valores antes → después (las contraseñas nunca se guardan).
 También registra inicios y cierres de sesión e intentos fallidos. Los comandos `flask seed/demo` no se auditan.
+La pantalla muestra una gráfica de actividad de los últimos 14 días y los módulos con más cambios. Las fechas se muestran en hora local (`ZONA_HORARIA`), no en la hora UTC del servidor.
 
 ### Fotos
 Diseños e insumos aceptan PNG, JPG, WEBP o GIF de hasta 5 MB. Se valida el contenido real del archivo
@@ -128,7 +147,7 @@ python -m pytest
 Las pruebas (`tests/`) usan una base de datos en memoria con datos conocidos, así que no tocan
 `instance/inventario.db`. Cubren cálculos de costos y totales, compras sugeridas, flujo completo de
 cotizaciones, control de calidad, notificaciones, bitácora, subida de fotos, indicadores del dashboard,
-la matriz de permisos por rol y el asistente.
+la matriz de permisos por rol, el asistente, las metas y su periodo, la validación de teléfonos repetidos, el tablero kanban y la paginación.
 
 ## Asistente virtual
 Funciona **localmente** (sin APIs externas): `app/asistente/conocimiento.py` contiene las gestiones
@@ -136,6 +155,8 @@ del sistema y `app/asistente/motor.py` las reconoce aunque haya conjugaciones o 
 Responde según el rol, avisa cuando una gestión no le corresponde al usuario, consulta datos
 rápidos (pedidos activos, insumos en alerta, estado de un folio) y rechaza temas ajenos a la web.
 Para agregar una respuesta nueva basta con añadir un diccionario a `INTENCIONES`.
+
+Además de las gestiones, responde con datos reales de quien pregunta: el cliente ve su propio token de seguimiento (el personal nunca ve el de otra persona), cuándo le entregan sus pedidos, el estado de sus solicitudes y cotizaciones, sus mensajes y cómo va con sus metas.
 
 Los roles se validan con `@login_required` + `@roles_required(...)` (ver `app/decorators.py`).
 
@@ -251,3 +272,5 @@ Para actualizar después: `git pull` en la consola, `flask db upgrade` si hubo m
 - `RECUPERACION_MINUTOS`, `RECUPERACION_MAX_INTENTOS`, `RECUPERACION_MAX_CORREOS_HORA`: código para recuperar la contraseña (15, 5 y 3).
 - `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_REMITENTE` (y `MAIL_SERVER`, `MAIL_PORT`): Gmail que envía los códigos.
 - `MENSAJES_RETENCION_DIAS`, `MENSAJES_REFRESCO_SEG`: mensajería con el asistente de ventas (30 y 8).
+- `ZONA_HORARIA`: zona horaria del negocio para mostrar fechas y horas (por defecto `America/El_Salvador`; PythonAnywhere usa UTC).
+- `WHATSAPP_CODIGO_UNION`: frase para unirse al sandbox de Twilio (por ejemplo «join silver-tiger»); se muestra en la guía del cliente.
