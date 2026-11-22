@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% from "_macros.html" import boton_accion, grafico %}
+{% block title %}Metas e incentivos{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Metas e incentivos</h1>
+        <p>Define metas por rol o por persona. El avance se calcula solo con los datos del sistema y al cerrar el mes se fija lo que se paga.</p>
+    </div>
+    <div class="page-head__acciones">
+        <a href="{{ url_for('metas.equipo_csv', mes=clave_mes) }}" class="btn btn--outline"><i data-lucide="download"></i> CSV para nómina</a>
+        <a href="{{ url_for('metas.nueva') }}" class="btn btn--primary"><i data-lucide="plus"></i> Nueva meta</a>
+    </div>
+</div>
+
+<div class="metas-barra-mes">
+    {% include "metas/_mes.html" %}
+    <div class="metas-barra-mes__estado">
+        {% if cerrado %}
+            <span class="badge badge--ok"><i data-lucide="lock"></i> Mes cerrado</span>
+            {% if por_pagar > 0 %}<span class="muted small">{{ por_pagar | dinero }} por pagar</span>{% endif %}
+            {{ boton_accion(accion_form, url_for('metas.cerrar', mes=clave_mes), "Recalcular pendientes", "refresh-cw",
+                            confirmar="Se recalculan los incentivos aún no pagados con los datos actuales. ¿Continuar?") }}
+        {% elif terminado %}
+            <span class="badge badge--warn">Sin cerrar</span>
+            {{ boton_accion(accion_form, url_for('metas.cerrar', mes=clave_mes), "Cerrar " ~ nombre_mes ~ " y fijar montos", "lock",
+                            "btn btn--primary btn--sm", confirmar="Se guardará el incentivo de cada persona. ¿Cerrar el mes?") }}
+        {% else %}
+            <span class="badge badge--info">En curso</span>
+            <span class="muted small">Montos estimados con los datos de hoy · {{ dias_restantes }} día{{ 's' if dias_restantes != 1 }} restantes. Se cierra desde el día 1 del mes siguiente.</span>
+        {% endif %}
+    </div>
+</div>
+
+<div class="inv-resumen">
+    <div class="inv-tarjeta">
+        <span class="inv-tarjeta__icono"><i data-lucide="users"></i></span>
+        <div><strong>{{ filas | length }}</strong><span>persona{{ 's' if filas | length != 1 }} con metas</span></div>
+    </div>
+    <div class="inv-tarjeta">
+        <span class="inv-tarjeta__icono"><i data-lucide="target"></i></span>
+        {% set evs = filas | map(attribute='evaluaciones') | sum(start=[]) %}
+        <div><strong>{{ evs | selectattr('cumplida') | list | length }} de {{ evs | length }}</strong><span>metas cumplidas</span></div>
+    </div>
+    <div class="inv-tarjeta {{ 'inv-tarjeta--ok' if total > 0 }}">
+        <span class="inv-tarjeta__icono"><i data-lucide="wallet"></i></span>
+        <div><strong>{{ total | dinero }}</strong><span>{{ 'en incentivos fijados' if cerrado else 'en incentivos estimados' }}</span></div>
+    </div>
+</div>
+
+{% if filas %}
+<section class="panel">
+    <div class="panel__head"><div><h2>Incentivos de {{ nombre_mes }} por persona</h2>
+        <p>{{ 'Montos fijados al cerrar el mes' if cerrado else 'Estimado con los datos de hoy' }} · el avance de cada meta está más abajo</p></div></div>
+    <div class="panel__body">
+        {{ grafico('grafico-incentivos', {'tipo': 'barras-h', 'moneda': True,
+                   'etiquetas': filas | map(attribute='usuario.nombre') | list,
+                   'series': [{'nombre': 'Incentivo', 'valores': filas | map(attribute='total') | map('float') | list}]},
+                   'Incentivo por persona', 50 + 38 * (filas | length)) }}
+    </div>
+</section>
+{% endif %}
+
+<section class="panel">
+    <div class="panel__head"><div><h2>Equipo en {{ nombre_mes }}</h2><p>Avance de cada persona en sus metas</p></div></div>
+    {% if filas %}
+    <div class="equipo-lista">
+        {% for f in filas %}
+        <article class="equipo-persona">
+            <div class="equipo-persona__quien">
+                <span class="avatar">{{ f.usuario.iniciales }}</span>
+                <div><strong>{{ f.usuario.nombre }}</strong><span>{{ f.usuario.rol_legible }} · {{ f.cumplidas }} de {{ f.evaluaciones | length }} cumplidas</span></div>
+            </div>
+            <ul class="equipo-persona__metas">
+                {% for ev in f.evaluaciones %}
+                <li title="{{ ev.info.descripcion }}">
+                    <div class="equipo-persona__fila">
+                        <span>{{ ev.meta.nombre }} <small class="muted">· {{ ev.meta.periodo_texto }}{% if not ev.liquida_aqui %}, se paga en {{ ev.mes_liquidacion }}{% endif %}</small></span>
+                        <span class="muted">{{ ev.valor_texto }} / {{ ev.objetivo_texto }}</span>
+                    </div>
+                    <div class="meta-barra meta-barra--sm {% if ev.cumplida %}meta-barra--ok{% elif ev.parcial %}meta-barra--parcial{% endif %}"><span style="width: {{ ev.avance }}%"></span></div>
+                </li>
+                {% endfor %}
+            </ul>
+            <div class="equipo-persona__pago">
+                <strong>{{ f.total | dinero }}</strong>
+                {% if f.pagado %}<span class="badge badge--ok"><i data-lucide="check"></i> Pagado</span>
+                {% elif cerrado %}{{ boton_accion(accion_form, url_for('metas.pagar', usuario_id=f.usuario.id, mes=clave_mes), "Marcar pagado", "hand-coins",
+                                                  confirmar="¿Marcar como pagados los incentivos de " ~ f.usuario.nombre ~ "?") }}
+                {% else %}<span class="muted small">estimado</span>{% endif %}
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="vacio" style="padding: 40px 24px;">
+        <i data-lucide="target" style="width: 44px; height: 44px; opacity: 0.5; margin-bottom: 12px;"></i>
+        <p>Nadie tiene metas activas. Crea la primera para el taller o para ventas.</p>
+    </div>
+    {% endif %}
+</section>
+
+<section class="panel">
+    <div class="panel__head"><div><h2>Metas definidas</h2><p>{{ todas | selectattr('activa') | list | length }} activas de {{ todas | length }}</p></div></div>
+    <div class="tabla-wrap">
+        <table>
+            <thead>
+                <tr><th>Meta</th><th>Qué se mide</th><th>Para quién</th><th>Periodo</th><th class="num">Objetivo</th><th class="num">Incentivo</th><th>Estado</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for m in todas %}
+                {% set info = INDICADORES.get(m.indicador) %}
+                <tr class="{{ '' if m.activa else 'fila-apagada' }}">
+                    <td><strong>{{ m.nombre }}</strong>{% if m.descripcion %}<br><span class="muted small">{{ m.descripcion }}</span>{% endif %}</td>
+                    <td>{{ info.nombre if info else m.indicador }}{% if info and not info.mayor_mejor %} <span class="muted small">(menos es mejor)</span>{% endif %}</td>
+                    <td>{{ m.destinatario }}</td>
+                    <td class="nowrap">{{ m.periodo_texto }}</td>
+                    <td class="num">{{ formatear(m.objetivo, m.indicador) if info else m.objetivo }}</td>
+                    <td class="num">{{ m.incentivo | dinero }}{% if m.umbral_parcial %}<br><span class="muted small">mitad desde {{ m.umbral_parcial }} %</span>{% endif %}</td>
+                    <td>{% if m.activa %}<span class="badge badge--ok">Activa</span>{% else %}<span class="badge badge--neutral">Pausada</span>{% endif %}</td>
+                    <td class="acciones-fila">
+                        <a href="{{ url_for('metas.editar', meta_id=m.id) }}" class="btn-icono" title="Editar" aria-label="Editar {{ m.nombre }}"><i data-lucide="pencil"></i></a>
+                        {{ boton_accion(accion_form, url_for('metas.activar', meta_id=m.id), "", "pause" if m.activa else "play", "btn-icono",
+                                        titulo=("Pausar" if m.activa else "Activar") ~ " " ~ m.nombre) }}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" class="vacio">Todavía no hay metas.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel__head"><div><h2>Cómo funciona</h2></div></div>
+    <ol class="wa-pasos" style="padding-bottom: 24px;">
+        <li><strong>Define la meta:</strong> qué se mide (eso decide el área), para quién, el periodo y el incentivo. Solo cuenta lo que pase entre la fecha de inicio y la de fin.</li>
+        <li><strong>Cada quien ve su avance</strong> en «Mis metas», calculado con lo que registra: pedidos que mueve, solicitudes que atiende y sus ventas.</li>
+        <li><strong>Al terminar el mes, ciérralo:</strong> se fija el monto de las metas cuyo periodo termina ese mes. Aunque luego cambies la meta, ese mes no cambia.</li>
+        <li><strong>Marca como pagado</strong> cuando entregues el incentivo, y descarga el CSV para la nómina.</li>
+    </ol>
+</section>
+{% endblock %}

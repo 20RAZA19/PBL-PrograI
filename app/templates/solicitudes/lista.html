@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import paginacion, grafico %}
 {% block title %}Solicitudes{% endblock %}
 
 {% set clases_estado = {"enviada": "badge--info", "aprobada": "badge--brand", "convertida": "badge--ok",
@@ -40,6 +41,10 @@
         <p class="kpi__valor">{{ resumen.convertida }} <small>solicitudes</small></p>
         <div class="kpi__pie"><span class="badge badge--ok">Aceptadas</span> Con pedidos en el taller</div>
     </div>
+</section>
+<section class="panel">
+    <div class="panel__head"><div><h2>Solicitudes por semana</h2><p>Recibidas y aceptadas por el cliente · últimas 8 semanas (cada barra empieza el lunes)</p></div></div>
+    <div class="panel__body">{{ grafico('grafico-solicitudes', resumen.semanas, 'Solicitudes recibidas y aceptadas por semana', 220) }}</div>
 </section>
 {% endif %}
 
@@ -105,5 +110,6 @@
             </tbody>
         </table>
     </div>
+    {{ paginacion(pagina, "solicitudes") }}
 </section>
 {% endblock %}

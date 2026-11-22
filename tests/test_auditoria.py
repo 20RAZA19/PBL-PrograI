@@ -76,4 +76,4 @@ def test_filtros_de_la_bitacora(app, ids, entrar):
     admin = entrar("admin")
     entrar("gestor")
     html = admin.get(f"/admin/bitacora?usuario={ids.usuarios['gestor']}").get_data(as_text=True)
-    assert "Gael Gestor" in html and "Ada Admin" not in html.split("<tbody>")[1]
+    assert "Gael Gestor" in html and "Ada Admin" not in html.split("<tbody>")[-1]

@@ -15,6 +15,7 @@ from app.extensions import db
 from app.mensajes.servicios import (MAX_TEXTO, conversaciones_de, dias_retencion, enviar, marcar_leidos,
                                     purgar_conversaciones)
 from app.models import Conversacion, Mensaje
+from app.utils import paginar
 
 mensajes = Blueprint("mensajes", __name__)
 PARTICIPANTES = ("admin", "ventas", "cliente")
@@ -45,8 +46,12 @@ def _conversacion(conversacion_id):
 @roles_required(*PARTICIPANTES)
 def lista():
     purgar_conversaciones()
-    lista = conversaciones_de(current_user)
-    return render_template("mensajes/lista.html", conversaciones=lista, dias=dias_retencion(),
+    pagina = paginar(conversaciones_de(current_user), por_defecto=10, ordenes={
+        "reciente": ("Más reciente", [Conversacion.ultima_actividad.desc()]),
+        "antigua": ("Más antigua", [Conversacion.ultima_actividad]),
+        "asunto": ("Asunto A→Z", [Conversacion.asunto]),
+    })
+    return render_template("mensajes/lista.html", conversaciones=pagina.items, pagina=pagina, dias=dias_retencion(),
                            accion_form=AccionForm())
 
 

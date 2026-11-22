@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import badge_pedido, badge_entrega %}
+{% from "_macros.html" import badge_pedido, badge_entrega, grafico %}
 {% block title %}Mi Portal{% endblock %}
 
 {% block content %}
@@ -50,6 +50,37 @@
     </div>
 </section>
 
+{% if pedidos %}
+<div class="dash-grid">
+    <section class="panel span-5">
+        <div class="panel__head"><div><h2>Tus pedidos en curso</h2><p>En qué fase está cada uno</p></div></div>
+        <div class="panel__body">
+            {% if resumen.activos %}
+            {{ grafico('grafico-fases', visual.fases, 'Pedidos en curso por fase', 230) }}
+            {% else %}<p class="vacio">No tienes pedidos en curso.</p>{% endif %}
+        </div>
+    </section>
+    <section class="panel span-4">
+        <div class="panel__head"><div><h2>Prendas pedidas</h2><p>Unidades por mes · último año</p></div></div>
+        <div class="panel__body">
+            {% if visual.hay_prendas %}
+            {{ grafico('grafico-prendas-cliente', visual.prendas, 'Prendas pedidas por mes', 230) }}
+            {% else %}<p class="vacio">Aún no hay pedidos este año.</p>{% endif %}
+        </div>
+    </section>
+    <section class="panel span-3">
+        <div class="panel__head"><div><h2>Entregas a tiempo</h2><p>De todos tus pedidos entregados</p></div></div>
+        <div class="panel__body">
+            {% if visual.entregados %}
+            <p class="cifra-grande">{{ visual.puntualidad }} %</p>
+            <p class="muted small" style="margin: 4px 0 14px;">{{ visual.a_tiempo }} de {{ visual.entregados }} llegaron en o antes de la fecha acordada</p>
+            <div class="pista" role="img" aria-label="{{ visual.puntualidad }} % a tiempo"><div class="pista__relleno" style="width: {{ visual.puntualidad }}%;"></div></div>
+            {% else %}<p class="vacio" style="padding: 20px 0;">Cuando recibas tu primer pedido verás aquí su puntualidad.</p>{% endif %}
+        </div>
+    </section>
+</div>
+{% endif %}
+
 {% if solicitudes %}
 <section class="panel">
     <div class="panel__head">
@@ -95,9 +126,9 @@
         <div class="panel__head">
             <div>
                 <h2>Pedidos en Curso</h2>
-                <p>Avance de cada orden en el taller</p>
+                <p>Avance de cada orden en el taller{% if total_activos > activos | length %} · los {{ activos | length }} más recientes{% endif %}</p>
             </div>
-            <a href="{{ url_for('rastreo.lista') }}" class="btn btn--outline btn--sm">Ver todos</a>
+            <a href="{{ url_for('rastreo.lista') }}" class="btn btn--outline btn--sm">{% if total_activos > activos | length %}Ver los {{ total_activos }}{% else %}Ver todos{% endif %}</a>
         </div>
         <div class="lista-compacta">
             {% for p in activos %}

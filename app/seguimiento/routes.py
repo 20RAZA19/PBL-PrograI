@@ -61,6 +61,31 @@ def verificar(token_texto, digitos):
     return usuario
 
 
+MAX_EVENTOS = 15
+
+
+def rastreo_publico(pedido):
+    """Recorrido del pedido para la consulta con token: fases, ubicación y eventos.
+
+    No incluye quién hizo cada cambio ni datos de costo: solo lo que el cliente
+    ve también en su portal.
+    """
+    eventos = list(reversed(pedido.eventos))[:MAX_EVENTOS]
+    return {
+        "folio": pedido.folio,
+        "estado": pedido.estado,
+        "ubicacion": pedido.ubicacion_actual or current_app.config["TALLER_NOMBRE"],
+        "lat": pedido.latitud,
+        "lng": pedido.longitud,
+        "ruta": [{"lat": e.latitud, "lng": e.longitud, "estado": e.estado, "ubicacion": e.ubicacion or "",
+                  "fecha": e.fecha.strftime("%d/%m/%Y %H:%M")}
+                 for e in pedido.eventos if e.tiene_coordenadas],
+        "eventos": [{"estado": e.estado, "ubicacion": e.ubicacion or "", "nota": e.nota or "",
+                     "fecha": e.fecha} for e in eventos],
+        "mas_eventos": max(0, len(pedido.eventos) - MAX_EVENTOS),
+    }
+
+
 def pedidos_del_token(usuario):
     """Pedidos de la empresa del usuario: primero los activos (por fecha de entrega) y luego los entregados."""
     pedidos = Pedido.query.filter_by(cliente_id=usuario.cliente_id).all()
@@ -72,7 +97,7 @@ def pedidos_del_token(usuario):
 @seguimiento.route("/", methods=["GET", "POST"])
 def consulta():
     form = SeguimientoForm()
-    contexto = {"form": form, "usuario": None, "activos": [], "entregados": []}
+    contexto = {"form": form, "usuario": None, "activos": [], "entregados": [], "rastreos": {}}
     estado = 200
     if form.validate_on_submit():
         if _bloqueado():
@@ -90,7 +115,8 @@ def consulta():
                 registrar_accion("consulta", "Seguimiento",
                                  f"Consulta de pedidos de «{usuario.cliente.nombre}» con token", usuario=usuario)
                 db.session.commit()
-                contexto.update(usuario=usuario, activos=activos, entregados=entregados)
+                contexto.update(usuario=usuario, activos=activos, entregados=entregados,
+                                rastreos={p.folio: rastreo_publico(p) for p in activos})
     respuesta = current_app.make_response((render_template("seguimiento/consulta.html", **contexto), estado))
     respuesta.headers["Cache-Control"] = "no-store"   # datos del cliente: que el navegador no los guarde
     respuesta.headers["X-Robots-Tag"] = "noindex"

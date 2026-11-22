@@ -37,6 +37,8 @@ ENTIDADES = {
     "OrdenCompra": "Orden de compra",
     "OrdenCompraLinea": "Línea de orden de compra",
     "RegistroCalidad": "Control de calidad",
+    "Meta": "Meta de incentivo",
+    "PagoIncentivo": "Pago de incentivo",
 }
 
 # Campos que no aportan información (o que no deben mostrarse)

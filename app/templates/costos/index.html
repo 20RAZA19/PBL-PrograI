@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import badge_pedido %}
+{% from "_macros.html" import badge_pedido, grafico %}
 {% block title %}Costos y Márgenes{% endblock %}
 
 {% macro margen(valor) %}
@@ -35,6 +35,24 @@
         <div class="kpi__pie">{{ resumen.disenos_incompletos }} diseño{{ 's' if resumen.disenos_incompletos != 1 }} por completar</div>
     </div>
 </section>
+
+{% set con_margen = pedidos | selectattr('margen_pct', 'ne', none) | list %}
+{% if con_margen %}
+{% set peores = (con_margen | sort(attribute='margen_pct'))[:10] %}
+<section class="panel">
+    <div class="panel__head">
+        <div><h2>Margen de los pedidos</h2>
+            <p>Los {{ peores | length }} con menor margen · rojo: bajo {{ margen_minimo }} % · ámbar: bajo la meta de {{ meta_margen }} % · verde: en meta</p></div>
+    </div>
+    <div class="panel__body">
+        {{ grafico('grafico-margen', {'tipo': 'barras-h', 'porcentaje': True,
+                   'etiquetas': peores | map(attribute='folio') | list,
+                   'series': [{'nombre': 'Margen', 'valores': peores | map(attribute='margen_pct') | list,
+                               'colores': peores | map(attribute='margen_pct') | map('nivel_margen', margen_minimo, meta_margen) | list}]},
+                   'Margen por pedido', 50 + 32 * (peores | length)) }}
+    </div>
+</section>
+{% endif %}
 
 <section class="panel">
     <div class="panel__head">

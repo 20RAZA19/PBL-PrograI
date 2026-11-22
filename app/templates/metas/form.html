@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% from "_macros.html" import campo, casilla %}
+{% block title %}{{ 'Editar meta' if meta else 'Nueva meta' }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('metas.equipo') }}" class="volver"><i data-lucide="arrow-left"></i> Metas e incentivos</a>
+<div class="page-head">
+    <div>
+        <h1>{{ 'Editar meta' if meta else 'Nueva meta' }}</h1>
+        <p>El avance se calcula solo; tú decides qué medir, cuánto pedir y cuánto pagar.</p>
+    </div>
+</div>
+
+<div class="layout-2">
+    <section class="panel">
+        <form method="post" class="form" novalidate>
+            {{ form.hidden_tag() }}
+            <div class="form__grid">
+                {{ campo(form.nombre, "campo--full", placeholder="Ej. Producción de noviembre") }}
+                {{ campo(form.indicador) }}
+                {{ campo(form.destino) }}
+                {{ campo(form.fecha_inicio, type="date") }}
+                {{ campo(form.fecha_fin, type="date") }}
+                {{ campo(form.objetivo, step="0.01", min="0", placeholder="Ej. 800") }}
+                {{ campo(form.incentivo, step="0.01", min="0", placeholder="Ej. 40.00") }}
+                {{ campo(form.umbral_parcial, min="50", max="99", placeholder="Ej. 80") }}
+                {{ campo(form.descripcion, "campo--full", placeholder="Ej. Cuentan solo los pedidos del colegio San José") }}
+                {{ casilla(form.activa, "Las metas pausadas no se muestran al equipo ni se pagan.", "campo--full") }}
+            </div>
+            <div class="form__acciones">
+                <a href="{{ url_for('metas.equipo') }}" class="btn btn--outline">Cancelar</a>
+                <button type="submit" class="btn btn--primary"><i data-lucide="save"></i> Guardar meta</button>
+            </div>
+        </form>
+    </section>
+
+    <aside class="panel">
+        <div class="panel__head"><div><h2 id="ind-nombre">Qué se mide</h2><p id="ind-rol"></p></div></div>
+        <div class="panel__body">
+            <p id="ind-descripcion" style="font-size: 14px; line-height: 1.55;"></p>
+            <p class="small muted" id="ind-sentido" style="margin-top: 10px;"></p>
+            <p class="small muted" id="ind-unidad" style="margin-top: 6px;"></p>
+        </div>
+    </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    /* Explica el indicador elegido: cómo se calcula y en qué unidad va el objetivo. */
+    (function () {
+        const info = {
+            {% for clave, i in INDICADORES.items() %}
+            {{ clave | tojson }}: {nombre: {{ i.nombre | tojson }}, descripcion: {{ i.descripcion | tojson }},
+                rol: {{ ('Taller' if i.rol == 'gestor' else 'Ventas') | tojson }}, unidad: {{ i.unidad | tojson }},
+                mayor: {{ i.mayor_mejor | tojson }}, equipo: {{ i.equipo | tojson }}},
+            {% endfor %}
+        };
+        const select = document.getElementById('{{ form.indicador.id }}');
+        const objetivo = document.querySelector('label[for="{{ form.objetivo.id }}"]');
+        const area = {{ form.area_destino | tojson }};
+        const rolIndicador = {
+            {% for clave, i in INDICADORES.items() %}{{ clave | tojson }}: {{ i.rol | tojson }},{% endfor %}
+        };
+        const destino = document.getElementById('{{ form.destino.id }}');
+        /* «Para quién» solo ofrece al personal del área que mide la meta. */
+        function filtrarDestino() {
+            const rol = rolIndicador[select.value];
+            let primeraVisible = null;
+            for (const op of destino.options) {
+                const visible = !rol || area[op.value] === rol;
+                op.hidden = !visible;
+                op.disabled = !visible;
+                if (visible && !primeraVisible) primeraVisible = op;
+            }
+            if (destino.selectedOptions[0] && destino.selectedOptions[0].disabled && primeraVisible) {
+                destino.value = primeraVisible.value;
+            }
+        }
+        function pintar() {
+            const i = info[select.value];
+            if (!i) return;
+            document.getElementById('ind-nombre').textContent = i.nombre;
+            document.getElementById('ind-rol').textContent = 'Pensado para ' + i.rol + (i.equipo ? ' · meta de equipo (mismo valor para todo el taller)' : '');
+            document.getElementById('ind-descripcion').textContent = i.descripcion;
+            document.getElementById('ind-sentido').textContent = i.mayor
+                ? 'Se cumple al llegar o pasar el objetivo.'
+                : 'Se cumple si el resultado queda en el objetivo o por debajo (es un máximo).';
+            document.getElementById('ind-unidad').textContent = 'El objetivo se escribe en: ' + (i.unidad === '$' ? 'dólares' : i.unidad) + '.';
+            if (objetivo) objetivo.textContent = (i.mayor ? 'Objetivo del periodo' : 'Máximo permitido en el periodo') + ' (' + (i.unidad === '$' ? '$' : i.unidad) + ')';
+        }
+        select.addEventListener('change', function () { pintar(); filtrarDestino(); });
+        pintar();
+        filtrarDestino();
+    })();
+</script>
+{% endblock %}

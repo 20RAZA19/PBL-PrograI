@@ -59,3 +59,39 @@ def simulador_limpiar():
     session.pop("wa_simulador", None)
     flash("Conversación del simulador reiniciada.", "info")
     return redirect(url_for("whatsapp.simulador"))
+
+
+@whatsapp.route("/guia")
+@login_required
+@roles_required("cliente")
+def guia():
+    """Cómo pedir datos al bot, paso a paso. Al cliente le muestra su propia situación
+    (si su número está listo) y la respuesta real que recibiría a ESTADO."""
+    from flask_login import current_user
+    from app.models import usuario_con_telefono
+    from app.whatsapp.bot import _estado, digitos, usuario_por_telefono
+
+    numero = digitos(current_app.config.get("TWILIO_WHATSAPP_FROM", ""))
+    union = (current_app.config.get("WHATSAPP_CODIGO_UNION", "") or "").strip()
+    # El código del sandbox lo asigna Twilio y siempre empieza con «join» (p. ej. «join thought-not»)
+    if union and not union.lower().startswith("join "):
+        union = "join " + union
+    revision, vista_estado = None, None
+    if current_user.rol == "cliente":
+        tiene = len(current_user.telefono_digitos) >= 8
+        revision = {
+            "telefono": current_user.telefono,
+            "tiene_telefono": tiene,
+            "codigo_pais": current_user.telefono_digitos.startswith("503") or (current_user.telefono or "").strip().startswith("+"),
+            "repetido": bool(tiene and usuario_con_telefono(current_user.telefono, excluir_id=current_user.id)),
+            "aprobada": current_user.estado_permiso == "aprobado" and current_user.activo and bool(current_user.cliente_id),
+        }
+        revision["listo"] = tiene and not revision["repetido"] and revision["aprobada"] and \
+            usuario_por_telefono(current_user.telefono) is not None
+        if current_user.cliente_id:
+            vista_estado = _estado(current_user)
+    enlace = f"https://wa.me/{numero}?text={(union or 'MENU').replace(' ', '%20')}" if numero else None
+    return render_template("whatsapp/guia.html", numero=numero, union=union, enlace=enlace,
+                           revision=revision, vista_estado=vista_estado,
+                           bot_activo=bool(current_app.config.get("TWILIO_AUTH_TOKEN")),
+                           max_mensajes=current_app.config.get("WHATSAPP_MAX_MENSAJES", 20))

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import paginacion, grafico %}
 {% block title %}Bitácora de Auditoría{% endblock %}
 
 {% set clases = {"crear": "badge--ok", "editar": "badge--info", "eliminar": "badge--danger", "sesion": "badge--neutral", "consulta": "badge--neutral", "whatsapp": "badge--ok", "recuperacion": "badge--warn"} %}
@@ -25,6 +26,23 @@
         <a class="btn btn--outline" href="{{ url_for('admin.bitacora_csv', **request.args) }}"><i data-lucide="file-spreadsheet"></i> Exportar CSV</a>
     </div>
 </div>
+
+{% if actividad.total %}
+<div class="dash-grid">
+    <section class="panel span-8">
+        <div class="panel__head"><div><h2>Actividad de los últimos 14 días</h2><p>{{ actividad.total }} registros · hora de El Salvador</p></div></div>
+        <div class="panel__body">{{ grafico('grafico-bitacora', actividad.diario, 'Registros de la bitácora por día', 240) }}</div>
+    </section>
+    <section class="panel span-4">
+        <div class="panel__head"><div><h2>Dónde hubo más cambios</h2><p>Módulos, últimos 14 días</p></div></div>
+        <div class="panel__body">
+            {% if actividad.modulos.etiquetas %}
+            {{ grafico('grafico-modulos', actividad.modulos, 'Cambios por módulo', 40 + 34 * (actividad.modulos.etiquetas | length)) }}
+            {% else %}<p class="vacio">Solo hubo accesos, sin cambios de datos.</p>{% endif %}
+        </div>
+    </section>
+</div>
+{% endif %}
 
 <section class="panel">
     <form method="get" class="panel__body filtros-linea">
@@ -94,14 +112,7 @@
             </tbody>
         </table>
     </div>
-    {% if pagina.pages > 1 %}
-    {% set args = request.args.to_dict() %}
-    <div class="paginacion">
-        {% if pagina.has_prev %}{% set _ = args.update({'pagina': pagina.prev_num}) %}<a class="btn btn--outline btn--sm" href="{{ url_for('admin.bitacora', **args) }}"><i data-lucide="chevron-left"></i> Anterior</a>{% endif %}
-        <span class="muted small">Página {{ pagina.page }} de {{ pagina.pages }}</span>
-        {% if pagina.has_next %}{% set _ = args.update({'pagina': pagina.next_num}) %}<a class="btn btn--outline btn--sm" href="{{ url_for('admin.bitacora', **args) }}">Siguiente <i data-lucide="chevron-right"></i></a>{% endif %}
-    </div>
-    {% endif %}
+    {{ paginacion(pagina, "registros") }}
 </section>
 
 <section class="panel">

@@ -90,6 +90,10 @@ class Config:
     TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
     TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
     TWILIO_WHATSAPP_FROM = os.environ.get("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")  # número del sandbox
+    # Frase para unirse al sandbox de Twilio (p. ej. «join silver-tiger»). Se muestra en la guía del cliente.
+    # Hora local del negocio (el servidor de PythonAnywhere usa UTC)
+    ZONA_HORARIA = os.environ.get("ZONA_HORARIA", "America/El_Salvador")
+    WHATSAPP_CODIGO_UNION = os.environ.get("WHATSAPP_CODIGO_UNION", "").strip()
     # Mensajes que acepta el bot por número en 15 minutos (frena a quien prueba comandos sin parar)
     WHATSAPP_MAX_MENSAJES = int(os.environ.get("WHATSAPP_MAX_MENSAJES", 20))
     # Avisos salientes por WhatsApp (cotización lista, etc.). Requiere Twilio configurado.

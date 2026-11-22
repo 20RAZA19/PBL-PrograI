@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from flask import current_app, has_request_context, url_for
 
 from app.auditoria import registrar_accion
-from app.models import Auditoria, Usuario
+from app.models import Auditoria, Usuario, telefonos_coinciden
 from app.seguimiento.routes import pedidos_del_token
 
 VENTANA_MIN = 15
@@ -39,10 +39,7 @@ def normalizar(texto):
 
 def _coincide(registrado, remitente):
     """El teléfono guardado puede carecer de código de país: basta con que uno termine en el otro."""
-    if len(registrado) < 8 or len(remitente) < 8:
-        return False
-    corto, largo = sorted((registrado, remitente), key=len)
-    return largo.endswith(corto)
+    return telefonos_coinciden(registrado, remitente)
 
 
 def usuario_por_telefono(telefono):

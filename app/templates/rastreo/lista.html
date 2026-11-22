@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import badge_pedido, badge_entrega %}
+{% from "_macros.html" import badge_pedido, badge_entrega, paginacion %}
 {% block title %}Rastreo de Pedidos{% endblock %}
 
 {% block head %}
@@ -51,7 +51,7 @@
     <div class="panel__head">
         <div>
             <h2>Mapa de Pedidos</h2>
-            <p>{{ marcadores | length }} pedido{{ 's' if marcadores | length != 1 }} con ubicación registrada</p>
+            <p>{{ marcadores | length }} pedido{{ 's' if marcadores | length != 1 }} de esta página con ubicación registrada</p>
         </div>
     </div>
     <div id="mapa-general" class="mapa"></div>
@@ -83,6 +83,7 @@
     </a>
     {% endfor %}
 </div>
+<div class="panel panel--paginacion">{{ paginacion(pagina, "pedidos") }}</div>
 {% else %}
 <div class="panel">
     <div class="vacio">

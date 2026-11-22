@@ -1,0 +1,7 @@
+{# Selector de mes: ‹ anterior · mes actual · siguiente › #}
+<nav class="mes-nav" aria-label="Cambiar de mes">
+    <a class="btn-icono" href="{{ url_for(request.endpoint, mes=anterior) }}" aria-label="Mes anterior"><i data-lucide="chevron-left"></i></a>
+    <strong>{{ nombre_mes | capitalize }}</strong>
+    {% if siguiente %}<a class="btn-icono" href="{{ url_for(request.endpoint, mes=siguiente) }}" aria-label="Mes siguiente"><i data-lucide="chevron-right"></i></a>
+    {% else %}<span class="btn-icono is-off" aria-hidden="true"><i data-lucide="chevron-right"></i></span>{% endif %}
+</nav>

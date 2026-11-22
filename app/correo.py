@@ -39,35 +39,83 @@ def _construir(destino, asunto, texto, html=None):
     return m
 
 
-def enviar_correo(destino, asunto, texto, html=None):
-    """Devuelve True si el servidor SMTP aceptó el correo. Nunca lanza excepción."""
+def explicar_error(error):
+    """Traduce el error de SMTP a una indicación concreta para el administrador."""
+    if isinstance(error, smtplib.SMTPAuthenticationError):
+        return ("Gmail rechazó el usuario o la contraseña (código %s). Usa una contraseña de aplicación de 16 letras: "
+                "requiere activar la verificación en 2 pasos en la cuenta de Google. "
+                "La contraseña normal de Gmail no funciona." % error.smtp_code)
+    if isinstance(error, smtplib.SMTPRecipientsRefused):
+        return "Gmail no aceptó la dirección de destino. Revisa que el correo esté bien escrito."
+    if isinstance(error, smtplib.SMTPSenderRefused):
+        return "Gmail no aceptó el remitente. MAIL_USERNAME debe ser la misma cuenta de Gmail que inicia sesión."
+    if isinstance(error, (TimeoutError, ConnectionRefusedError, ConnectionResetError)) or "timed out" in str(error):
+        return ("No se pudo conectar con el servidor de correo. En PythonAnywhere gratuito solo se permite "
+                "smtp.gmail.com por el puerto 587; revisa MAIL_SERVER y MAIL_PORT.")
+    if isinstance(error, smtplib.SMTPException):
+        return f"El servidor de correo respondió con un error: {error}"
+    return f"Error de red al enviar: {error}"
+
+
+def intentar_envio(destino, asunto, texto, html=None):
+    """Envía y devuelve (enviado, motivo). `motivo` explica el fallo; es para el administrador."""
     cfg = current_app.config
     mensaje = _construir(destino, asunto, texto, html)
 
     if cfg.get("TESTING"):
+        if cfg.get("CORREO_FALLA_PRUEBA"):
+            return False, cfg["CORREO_FALLA_PRUEBA"]
         current_app.extensions.setdefault("correos_enviados", []).append(mensaje)
-        return True
+        return True, ""
 
     if not configurado():
         if not cfg.get("SESSION_COOKIE_SECURE"):
             log.warning("[correo sin configurar] Para %s · %s\n%s", destino, asunto, texto)
             print(f"\n=== CORREO (sin configurar, solo local) para {destino} ===\n{asunto}\n{texto}\n", flush=True)
-        else:
-            log.error("Correo sin configurar: no se envió «%s» a %s", asunto, destino)
-        return False
+            return False, ("Faltan MAIL_USERNAME y MAIL_PASSWORD en el archivo .env. En local el correo se "
+                           "escribió en la consola donde corre «flask run».")
+        log.error("Correo sin configurar: no se envió «%s» a %s", asunto, destino)
+        return False, "Faltan MAIL_USERNAME y MAIL_PASSWORD en el archivo .env del servidor (y recargar la app)."
 
     try:
         with smtplib.SMTP(cfg.get("MAIL_SERVER", "smtp.gmail.com"), int(cfg.get("MAIL_PORT", 587)), timeout=15) as s:
             s.starttls(context=ssl.create_default_context())
             s.login(cfg["MAIL_USERNAME"], cfg["MAIL_PASSWORD"])
             s.send_message(mensaje)
-        return True
+        return True, ""
     except (smtplib.SMTPException, OSError) as e:
         log.error("No se pudo enviar el correo a %s: %s", destino, e)
-        return False
+        return False, explicar_error(e)
 
 
-def correo_codigo_recuperacion(usuario, codigo, minutos, enlace):
+def enviar_correo(destino, asunto, texto, html=None):
+    """Devuelve True si el servidor SMTP aceptó el correo. Nunca lanza excepción."""
+    return intentar_envio(destino, asunto, texto, html)[0]
+
+
+def estado_configuracion():
+    """Resumen para la página de diagnóstico (sin mostrar la contraseña)."""
+    cfg = current_app.config
+    usuario = cfg.get("MAIL_USERNAME") or ""
+    oculto = (usuario[:2] + "•••" + usuario[usuario.index("@"):]) if "@" in usuario else ("•••" if usuario else "")
+    return {
+        "configurado": configurado(),
+        "servidor": f"{cfg.get('MAIL_SERVER', 'smtp.gmail.com')}:{cfg.get('MAIL_PORT', 587)}",
+        "usuario": oculto,
+        "tiene_clave": bool(cfg.get("MAIL_PASSWORD")),
+        "largo_clave": len(cfg.get("MAIL_PASSWORD") or ""),
+        "remitente": cfg.get("MAIL_REMITENTE") or "Arte y Color",
+    }
+
+
+def correo_de_prueba(destino):
+    texto = ("Este es un correo de prueba de AyC Control.\n\n"
+             "Si lo estás leyendo, el envío de correos funciona y la recuperación de contraseñas también llegará.\n\n"
+             "Arte y Color")
+    return intentar_envio(destino, "Prueba de correo · AyC Control", texto)
+
+
+def correo_codigo_recuperacion(usuario, codigo, minutos, enlace, detalle=False):
     nombre = usuario.nombre.split()[0] if usuario.nombre else ""
     asunto = f"{codigo} es tu código para cambiar la contraseña · AyC Control"
     texto = (f"Hola {nombre}:\n\n"
@@ -87,4 +135,5 @@ def correo_codigo_recuperacion(usuario, codigo, minutos, enlace):
 <p style="margin:0 0 22px;text-align:center;"><a href="{enlace}" style="display:inline-block;background:#2d5a27;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:bold;font-size:14px;">Escribir el código</a></p>
 <p style="margin:0;font-size:12px;line-height:1.5;color:#7a8475;">Si no pediste cambiar tu contraseña, ignora este correo: tu cuenta sigue igual. Nadie de Arte y Color te pedirá este código.</p>
 </td></tr></table></td></tr></table></body></html>"""
-    return enviar_correo(usuario.email, asunto, texto, html)
+    resultado = intentar_envio(usuario.email, asunto, texto, html)
+    return resultado if detalle else resultado[0]

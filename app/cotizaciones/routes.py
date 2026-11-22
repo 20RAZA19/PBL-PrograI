@@ -12,7 +12,7 @@ from app.forms import AccionForm
 from app.models import (ESTADOS_COTIZACION, Cliente, Cotizacion, CotizacionLinea, Diseno, Pedido)
 from app.notificaciones.servicios import notificar, usuarios_con_rol, usuarios_del_cliente
 from app.rastreo.servicios import nuevo_folio_pedido, registrar_evento
-from app.utils import generar_folio
+from app.utils import generar_folio, paginar
 
 cotizaciones = Blueprint("cotizaciones", __name__)
 
@@ -51,7 +51,14 @@ def lista():
         query = query.filter(Cotizacion.estado == estado)
     if q:
         query = query.filter(or_(Cotizacion.folio.ilike(f"%{q}%"), Cliente.nombre.ilike(f"%{q}%")))
-    lista_cot = query.order_by(Cotizacion.creado_en.desc()).all()
+    pagina = paginar(query, por_defecto=10, ordenes={
+        "reciente": ("Más reciente", [Cotizacion.creado_en.desc()]),
+        "antigua": ("Más antigua", [Cotizacion.creado_en]),
+        "cliente": ("Cliente A→Z", [Cliente.nombre, Cotizacion.creado_en.desc()]),
+        "folio": ("Folio", [Cotizacion.folio]),
+        "entrega": ("Fecha de entrega", [Cotizacion.fecha_entrega]),
+    })
+    lista_cot = pagina.items
 
     # Cotizaciones nacidas de solicitudes aprobadas: el cliente decide desde aquí también
     sol_cotizadas = []
@@ -71,7 +78,7 @@ def lista():
             "conversion": round(len(aceptadas) / len(respondidas) * 100) if respondidas else None,
             "monto_aceptado": sum((c.total for c in aceptadas), 0),
         }
-    return render_template("cotizaciones/lista.html", cotizaciones=lista_cot, estado=estado, q=q,
+    return render_template("cotizaciones/lista.html", cotizaciones=lista_cot, pagina=pagina, estado=estado, q=q,
                            estados=ESTADOS_COTIZACION, resumen=resumen, sol_cotizadas=sol_cotizadas)
 
 

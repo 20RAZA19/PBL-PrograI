@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import paginacion %}
 {% block title %}Control de Calidad{% endblock %}
 
 {% block content %}
@@ -128,5 +129,6 @@
             </tbody>
         </table>
     </div>
+    {{ paginacion(pagina, "registros") }}
 </section>
 {% endblock %}

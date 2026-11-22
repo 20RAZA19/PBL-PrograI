@@ -1,11 +1,49 @@
 {% extends "base.html" %}
+{% from "_macros.html" import paginacion %}
 {% block title %}Inventario de Insumos{% endblock %}
+
+{# Icono por categoría: ayuda a reconocer el tipo de material de un vistazo #}
+{% set ICONOS = {"Tela": "layers", "Hilo": "disc", "Botón": "circle-dot", "Cierre": "move-vertical",
+                 "Elástico": "move-horizontal", "Etiqueta": "tag"} %}
+
+{% macro barra(item) %}
+{# La barra llega al tope con el doble del mínimo; la marca central es el mínimo. #}
+{% set ancho = [item.cobertura / 2, 100] | min %}
+<div class="pista pista--sm" role="img"
+     aria-label="{{ item.cobertura }} % del mínimo de {{ item.stock_minimo | metros }} {{ item.unidad_medida | unidad_corta }}">
+    <div class="pista__relleno {% if item.alerta_stock == 'critico' %}pista__relleno--critico{% elif item.alerta_stock == 'bajo' %}pista__relleno--bajo{% endif %}"
+         style="width: {{ ancho }}%;"></div>
+    <span class="pista__minimo" style="left: 50%;" title="Mínimo: {{ item.stock_minimo | metros }} {{ item.unidad_medida | unidad_corta }}"></span>
+</div>
+{% endmacro %}
+
+{% macro sello(item) %}
+{% if item.alerta_stock == 'critico' %}<span class="badge badge--danger">Crítico</span>
+{% elif item.alerta_stock == 'bajo' %}<span class="badge badge--warn">Stock Bajo</span>
+{% else %}<span class="badge badge--ok">Disponible</span>{% endif %}
+{% endmacro %}
+
+{% macro acciones(item) %}
+<details class="menu">
+    <summary class="btn-icono" aria-label="Acciones de {{ item.nombre }}"><i data-lucide="more-vertical"></i></summary>
+    <div class="menu__lista">
+        <a href="{{ url_for('telas.detalle', tela_id=item.id) }}"><i data-lucide="history"></i> Ver Historial</a>
+        {% if current_user.puede_editar_inventario %}
+        <a href="{{ url_for('telas.editar', tela_id=item.id) }}"><i data-lucide="edit"></i> Editar Insumo</a>
+        {% if item.activo %}
+        <a href="{{ url_for('telas.movimiento', tela_id=item.id, tipo='entrada') }}"><i data-lucide="arrow-down-to-line"></i> Registrar entrada</a>
+        <a href="{{ url_for('telas.movimiento', tela_id=item.id, tipo='salida') }}"><i data-lucide="arrow-up-from-line"></i> Registrar salida</a>
+        {% endif %}
+        {% endif %}
+    </div>
+</details>
+{% endmacro %}
 
 {% block content %}
 <div class="page-head">
     <div>
-        <h1>Gestión de Inventario</h1>
-        <p>Control centralizado de telas, hilos, botones y materiales de confección.</p>
+        <h1>Inventario de Insumos</h1>
+        <p>Telas, hilos, botones y materiales de confección.</p>
     </div>
     {% if current_user.puede_editar_inventario %}
     <div class="page-head__acciones">
@@ -21,32 +59,62 @@
     {% endif %}
 </div>
 
+{# --- Resumen de todo el inventario activo ------------------------------- #}
+<div class="inv-resumen">
+    <div class="inv-tarjeta">
+        <span class="inv-tarjeta__icono"><i data-lucide="package"></i></span>
+        <div>
+            <strong>{{ resumen.total }}</strong>
+            <span>insumo{{ '' if resumen.total == 1 else 's' }} activo{{ '' if resumen.total == 1 else 's' }}
+                  en {{ resumen.categorias }} categoría{{ '' if resumen.categorias == 1 else 's' }}</span>
+        </div>
+    </div>
+
+    <a class="inv-tarjeta {% if resumen.criticos %}inv-tarjeta--danger{% endif %}"
+       href="{{ url_for('telas.lista', estado='Crítico') }}">
+        <span class="inv-tarjeta__icono"><i data-lucide="circle-alert"></i></span>
+        <div>
+            <strong>{{ resumen.criticos }}</strong>
+            <span>en estado crítico{% if resumen.criticos %} · reponer ya{% endif %}</span>
+        </div>
+    </a>
+
+    <a class="inv-tarjeta {% if resumen.bajos %}inv-tarjeta--warn{% endif %}"
+       href="{{ url_for('telas.lista', estado='Stock Bajo') }}">
+        <span class="inv-tarjeta__icono"><i data-lucide="trending-down"></i></span>
+        <div>
+            <strong>{{ resumen.bajos }}</strong>
+            <span>por debajo del mínimo</span>
+        </div>
+    </a>
+
+    {% if current_user.puede_ver_costos %}
+    <div class="inv-tarjeta">
+        <span class="inv-tarjeta__icono"><i data-lucide="wallet"></i></span>
+        <div>
+            <strong>{{ resumen.valor | dinero }}</strong>
+            <span>valor del inventario{% if resumen.sin_costo %} · {{ resumen.sin_costo }} sin costo cargado{% endif %}</span>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
 <div class="panel">
     <div class="panel__head">
-        <form method="get" class="search" style="max-width: 500px;">
+        <form method="get" class="search" style="max-width: 440px;">
             <i data-lucide="search"></i>
             <input type="text" name="q" value="{{ q }}" placeholder="Buscar por código, nombre, Pantone o categoría...">
             {% if estado %}<input type="hidden" name="estado" value="{{ estado }}">{% endif %}
             {% if categoria %}<input type="hidden" name="categoria" value="{{ categoria }}">{% endif %}
+            {% if ver_inactivos %}<input type="hidden" name="inactivos" value="1">{% endif %}
         </form>
 
         <div class="flex flex--wrap">
             <form method="get" class="filtro">
-                <i data-lucide="layers"></i>
-                {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
-                {% if estado %}<input type="hidden" name="estado" value="{{ estado }}">{% endif %}
-                <select name="categoria" onchange="this.form.submit()" aria-label="Categoría">
-                    <option value="">Todas las categorías</option>
-                    {% for c in categorias %}
-                        <option value="{{ c }}" {% if categoria == c %}selected{% endif %}>{{ c }}</option>
-                    {% endfor %}
-                </select>
-            </form>
-
-            <form method="get" class="filtro">
                 <i data-lucide="filter"></i>
                 {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
                 {% if categoria %}<input type="hidden" name="categoria" value="{{ categoria }}">{% endif %}
+                {% if ver_inactivos %}<input type="hidden" name="inactivos" value="1">{% endif %}
                 <select name="estado" onchange="this.form.submit()" aria-label="Estado de stock">
                     <option value="">Todos los estados</option>
                     <option value="Disponible" {% if estado == 'Disponible' %}selected{% endif %}>Disponible</option>
@@ -55,13 +123,72 @@
                 </select>
             </form>
 
-            <a href="{{ url_for('telas.lista', q=q or None, estado=estado or None, categoria=categoria or None, inactivos=None if ver_inactivos else '1') }}" class="btn btn--outline btn--sm">
+            <a href="{{ url_for('telas.lista', q=q or None, estado=estado or None, categoria=categoria or None, inactivos=None if ver_inactivos else '1') }}"
+               class="btn btn--outline btn--sm">
                 <i data-lucide="{{ 'eye-off' if ver_inactivos else 'archive-restore' }}"></i> {{ 'Ocultar inactivos' if ver_inactivos else 'Ver inactivos' }}
             </a>
+
+            <div class="vista-switch" role="group" aria-label="Forma de ver el inventario">
+                <button type="button" data-vista="tarjetas" aria-pressed="true" title="Ver en tarjetas">
+                    <i data-lucide="layout-grid"></i> <span>Tarjetas</span>
+                </button>
+                <button type="button" data-vista="tabla" aria-pressed="false" title="Ver en tabla">
+                    <i data-lucide="table-2"></i> <span>Tabla</span>
+                </button>
+            </div>
         </div>
     </div>
 
-    <div class="tabla-wrap">
+    {# --- Filtro por categoría, con el número de insumos de cada una ------ #}
+    <div class="inv-categorias">
+        <a href="{{ url_for('telas.lista', q=q or None, estado=estado or None, inactivos='1' if ver_inactivos else None) }}"
+           class="cat-chip {% if not categoria %}cat-chip--on{% endif %}">
+            <i data-lucide="layers-3"></i> Todas <span>{{ resumen.total }}</span>
+        </a>
+        {% for c in categorias %}
+        <a href="{{ url_for('telas.lista', q=q or None, estado=estado or None, categoria=c, inactivos='1' if ver_inactivos else None) }}"
+           class="cat-chip {% if categoria == c %}cat-chip--on{% endif %}">
+            <i data-lucide="{{ ICONOS.get(c, 'package') }}"></i> {{ c }} <span>{{ por_categoria.get(c, 0) }}</span>
+        </a>
+        {% endfor %}
+    </div>
+
+    {% if telas %}
+    <p class="inv-conteo">
+        {{ pagina.total }} insumo{{ '' if pagina.total == 1 else 's' }}
+        {% if q or estado or categoria %}con los filtros aplicados{% endif %}
+    </p>
+
+    {# --- Vista de tarjetas --------------------------------------------- #}
+    <div class="inv-grid" id="vista-tarjetas">
+        {% for item in telas %}
+        <article class="insumo {% if not item.activo %}insumo--inactivo{% endif %}">
+            <a class="insumo__color" href="{{ url_for('telas.detalle', tela_id=item.id) }}"
+               style="background-color: {{ item.color_hex }};" aria-label="Ver {{ item.nombre }}">
+                <span class="insumo__cat"><i data-lucide="{{ ICONOS.get(item.categoria, 'package') }}"></i> {{ item.categoria }}</span>
+                <span class="insumo__codigo">{{ item.codigo or 'S/C' }}</span>
+            </a>
+            <div class="insumo__cuerpo">
+                <div class="insumo__titulo">
+                    <a href="{{ url_for('telas.detalle', tela_id=item.id) }}"><strong>{{ item.nombre }}</strong></a>
+                    {{ acciones(item) }}
+                </div>
+                <p class="insumo__sub">{{ item.codigo_pantone or item.tipo }}{% if not item.activo %} · Inactivo{% endif %}</p>
+
+                <div class="insumo__cifra">
+                    <span><strong>{{ item.cantidad_disponible | metros }}</strong> {{ item.unidad_medida | unidad_corta }}</span>
+                    {{ sello(item) }}
+                </div>
+                {{ barra(item) }}
+                <p class="insumo__minimo">Mínimo {{ item.stock_minimo | metros }} {{ item.unidad_medida | unidad_corta }}
+                   · {{ item.cobertura }} % de cobertura</p>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+
+    {# --- Vista de tabla ------------------------------------------------- #}
+    <div class="tabla-wrap" id="vista-tabla" hidden>
         <table>
             <thead>
                 <tr>
@@ -69,7 +196,7 @@
                     <th>Insumo / Material</th>
                     <th>Categoría</th>
                     <th>Disponibilidad</th>
-                    <th>Estado de Stock</th>
+                    <th>Nivel de stock</th>
                     <th>Acciones</th>
                 </tr>
             </thead>
@@ -86,58 +213,73 @@
                             </div>
                         </a>
                     </td>
-                    <td>{{ item.categoria }}</td>
+                    <td><span class="cat-tag"><i data-lucide="{{ ICONOS.get(item.categoria, 'package') }}"></i> {{ item.categoria }}</span></td>
                     <td>
-                        <strong>{{ item.cantidad_disponible | metros }}</strong> <span style="font-size: 13px; color: var(--texto-suave);">{{ item.unidad_medida }}</span>
+                        <strong>{{ item.cantidad_disponible | metros }}</strong>
+                        <span class="muted small">{{ item.unidad_medida | unidad_corta }}</span>
                     </td>
-                    <td>
-                        {% if item.alerta_stock == 'critico' %}
-                            <span class="badge badge--danger">Crítico</span>
-                        {% elif item.alerta_stock == 'bajo' %}
-                            <span class="badge badge--warn">Stock Bajo</span>
-                        {% else %}
-                            <span class="badge badge--ok">Disponible</span>
-                        {% endif %}
+                    <td class="celda-nivel">
+                        {{ sello(item) }}
+                        {{ barra(item) }}
+                        <span class="muted small">mín. {{ item.stock_minimo | metros }}</span>
                     </td>
-                    <td>
-                        <details class="menu">
-                            <summary class="btn-icono" aria-label="Acciones"><i data-lucide="more-vertical"></i></summary>
-                            <div class="menu__lista">
-                                <a href="{{ url_for('telas.detalle', tela_id=item.id) }}"><i data-lucide="history"></i> Ver Historial</a>
-                                {% if current_user.puede_editar_inventario %}
-                                <a href="{{ url_for('telas.editar', tela_id=item.id) }}"><i data-lucide="edit"></i> Editar Insumo</a>
-                                {% if item.activo %}
-                                <a href="{{ url_for('telas.movimiento', tela_id=item.id, tipo='entrada') }}"><i data-lucide="arrow-down-to-line"></i> Registrar entrada</a>
-                                <a href="{{ url_for('telas.movimiento', tela_id=item.id, tipo='salida') }}"><i data-lucide="arrow-up-from-line"></i> Registrar salida</a>
-                                {% endif %}
-                                {% endif %}
-                            </div>
-                        </details>
-                    </td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="6">
-                        <div class="vacio">
-                            <i data-lucide="package-x" style="width: 48px; height: 48px; margin-bottom: 16px; opacity: 0.5;"></i>
-                            {% if q %}
-                                <p>No encontramos «{{ q }}» en el inventario.</p>
-                                {% if current_user.puede_editar_inventario %}
-                                <a href="{{ url_for('telas.nueva', nombre=q, categoria=categoria or None) }}" class="btn btn--primary" style="margin-top: 16px;">
-                                    <i data-lucide="plus"></i> Registrar «{{ q }}» como nuevo insumo
-                                </a>
-                                {% else %}
-                                <p class="small" style="margin-top: 8px;">Pide al Encargado de Taller que lo registre.</p>
-                                {% endif %}
-                            {% else %}
-                                <p>No se encontraron insumos en el inventario.</p>
-                            {% endif %}
-                        </div>
-                    </td>
+                    <td>{{ acciones(item) }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
+    {{ paginacion(pagina, "insumos") }}
+
+    {% else %}
+    <div class="vacio" style="padding: 56px 24px;">
+        <i data-lucide="package-x" style="width: 48px; height: 48px; margin-bottom: 16px; opacity: 0.5;"></i>
+        {% if q %}
+            <p>No encontramos «{{ q }}» en el inventario.</p>
+            {% if current_user.puede_editar_inventario %}
+            <a href="{{ url_for('telas.nueva', nombre=q, categoria=categoria or None) }}" class="btn btn--primary" style="margin-top: 16px;">
+                <i data-lucide="plus"></i> Registrar «{{ q }}» como nuevo insumo
+            </a>
+            {% else %}
+            <p class="small" style="margin-top: 8px;">Pide al Encargado de Taller que lo registre.</p>
+            {% endif %}
+        {% elif estado or categoria %}
+            <p>Ningún insumo coincide con los filtros.</p>
+            <a href="{{ url_for('telas.lista') }}" class="btn btn--outline" style="margin-top: 16px;">
+                <i data-lucide="rotate-ccw"></i> Quitar filtros
+            </a>
+        {% else %}
+            <p>Todavía no hay insumos en el inventario.</p>
+        {% endif %}
+    </div>
+    {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    /* Alterna entre tarjetas y tabla. Se recuerda en el navegador de cada persona. */
+    (function () {
+        const grid = document.getElementById('vista-tarjetas');
+        const tabla = document.getElementById('vista-tabla');
+        const botones = document.querySelectorAll('.vista-switch [data-vista]');
+        if (!grid || !tabla) return;
+
+        function pintar(vista) {
+            const esTabla = vista === 'tabla';
+            grid.hidden = esTabla;
+            tabla.hidden = !esTabla;
+            botones.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.vista === vista)));
+        }
+
+        let guardada = 'tarjetas';
+        try { guardada = localStorage.getItem('inventario-vista') || 'tarjetas'; } catch (e) {}
+        pintar(guardada);
+
+        botones.forEach((b) => b.addEventListener('click', function () {
+            pintar(b.dataset.vista);
+            try { localStorage.setItem('inventario-vista', b.dataset.vista); } catch (e) {}
+        }));
+    })();
+</script>
 {% endblock %}

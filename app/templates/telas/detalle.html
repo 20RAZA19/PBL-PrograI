@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import boton_accion %}
+{% from "_macros.html" import boton_accion, grafico, paginacion %}
 {% block title %}{{ tela.nombre }}{% endblock %}
 
 {% block content %}
@@ -74,6 +74,16 @@
     </div>
 </section>
 
+<section class="panel">
+    <div class="panel__head">
+        <div><h2>Existencia en los últimos 60 días</h2>
+            <p>{% if historia.hubo_movimientos %}Cómo subió y bajó el stock contra el mínimo{% else %}Sin entradas ni salidas en estos 60 días{% endif %}</p></div>
+    </div>
+    <div class="panel__body">
+        {{ grafico('grafico-stock', historia, 'Existencia diaria de ' ~ tela.nombre ~ ' y su stock mínimo', 240, tabla=False) }}
+    </div>
+</section>
+
 {% if tela.imagen %}
 <section class="panel">
     <div class="panel__head"><div><h2>Muestra</h2><p>Foto de referencia para identificarla en bodega</p></div>
@@ -124,6 +134,7 @@
             </tbody>
         </table>
     </div>
+    {{ paginacion(pagina, "movimientos") }}
 </section>
 
 {% if not current_user.puede_editar_inventario %}

@@ -492,6 +492,8 @@ def demo():
     _demo_solicitudes()
     db.session.flush()
     _demo_conversaciones()
+    db.session.flush()
+    _demo_metas()
 
     db.session.commit()
     click.echo("Datos de demostración cargados.")
@@ -956,6 +958,40 @@ def _demo_conversaciones():
 # ---------------------------------------------------------------------------
 CUENTAS_DEMO = ("admin123", "gestor@arteycolor.com", "ventas@arteycolor.com",
                 "cliente@banconacional.com", "colegio@sanjose.edu.sv", "nuevo.gestor@arteycolor.com")
+
+
+def _demo_metas():
+    """Metas de ejemplo para el taller y ventas, con el mes anterior ya cerrado y pagado."""
+    from app.metas.indicadores import cerrar_mes, mes_actual, mover_mes
+    from app.models import Meta, PagoIncentivo
+    if Meta.query.filter(Meta.nombre.like("%(demo)%")).first():
+        return
+    admin = Usuario.query.filter_by(rol="admin").order_by(Usuario.id).first()
+    ventas = Usuario.query.filter_by(email="ventas@arteycolor.com").first()
+    metas = [
+        Meta(nombre="Producción del mes (demo)", indicador="prendas_terminadas", rol="gestor", objetivo=600,
+             incentivo=40, umbral_parcial=80, descripcion="Prendas que pasas a «Terminado» en el tablero."),
+        Meta(nombre="Entregas puntuales (demo)", indicador="entregas_a_tiempo", rol="gestor", objetivo=90,
+             incentivo=25, descripcion="Que al menos 9 de cada 10 entregas lleguen a tiempo."),
+        Meta(nombre="Calidad del taller (demo)", indicador="defectos_taller", rol="gestor", objetivo=3,
+             incentivo=20, descripcion="Meta de equipo: máximo 3 % de prendas con defecto."),
+        Meta(nombre="Ventas cerradas (demo)", indicador="monto_vendido", rol="ventas", objetivo=4000,
+             incentivo=60, umbral_parcial=75),
+        Meta(nombre="Respuesta en menos de un día (demo)", indicador="respuesta_horas", rol="ventas", objetivo=24,
+             incentivo=20, descripcion="Responde las solicitudes de clientes en menos de 24 horas en promedio."),
+    ]
+    if ventas:
+        metas.append(Meta(nombre="Solicitudes atendidas (demo)", indicador="solicitudes_respondidas",
+                          usuario_id=ventas.id, objetivo=5, incentivo=15))
+    for m in metas:
+        m.creada_por = admin
+        db.session.add(m)
+    db.session.flush()
+    anio, mes = mover_mes(*mes_actual(), -1)
+    cerrar_mes(anio, mes)
+    db.session.flush()
+    for pago in PagoIncentivo.query.filter_by(anio=anio, mes=mes):
+        pago.estado, pago.pagado_en = "pagado", datetime.now()
 
 
 def _clave_aleatoria():

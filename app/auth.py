@@ -123,7 +123,7 @@ def logout():
 @auth.route('/perfil', methods=['GET', 'POST'])
 @login_required
 def perfil():
-    form = PerfilForm(obj=current_user, prefix='perfil')
+    form = PerfilForm(obj=current_user, prefix='perfil', usuario_id=current_user.id)
     pwd_form = CambiarPasswordForm(prefix='pwd')
 
     if form.submit.data and form.validate_on_submit():
@@ -196,6 +196,38 @@ def _demasiados():
     flash(f'Demasiados intentos. Espera {minutos} minutos e inténtalo de nuevo.', 'danger')
 
 
+def _emitir_y_enviar(email):
+    """Genera y envía el código si corresponde. Lo que pasó queda en la bitácora con su
+    motivo (para que el administrador sepa por qué no llegó), pero la respuesta al
+    usuario es siempre la misma, exista o no la cuenta."""
+    user = Usuario.query.filter(db.func.lower(Usuario.email) == email).first()
+    registrar_accion("recuperacion", "Acceso", f"{PREFIJO_CODIGO_PEDIDO} para «{email[:60]}»",
+                     user.id if user else None, usuario=None)
+    if user is None:
+        return
+    if not user.puede_ingresar:
+        motivo = ("la cuenta está pendiente de aprobación" if user.estado_permiso == "pendiente"
+                  else "la cuenta está rechazada o desactivada")
+        registrar_accion("recuperacion", "Acceso", f"No se envió el código: {motivo}", user.id, usuario=None)
+        return
+    if not _puede_recibir_correo(user):
+        registrar_accion("recuperacion", "Acceso",
+                         "No se envió el código: pidió otro hace menos de un minuto o llegó al límite por hora",
+                         user.id, usuario=None)
+        return
+    from app.correo import correo_codigo_recuperacion
+    minutos = current_app.config.get("RECUPERACION_MINUTOS", 15)
+    codigo = user.emitir_codigo_recuperacion(minutos)
+    db.session.commit()   # el código queda guardado antes de intentar el envío
+    enviado, motivo = correo_codigo_recuperacion(user, codigo, minutos,
+                                                 url_for('auth.recuperar_codigo', _external=True), detalle=True)
+    if enviado:
+        registrar_accion("recuperacion", "Acceso", PREFIJO_CODIGO_ENVIADO, user.id, usuario=user)
+    else:
+        registrar_accion("recuperacion", "Acceso", f"No se pudo enviar el correo de recuperación: {motivo}"[:300],
+                         user.id, usuario=user)
+
+
 @auth.route('/recuperar', methods=['GET', 'POST'])
 def recuperar():
     if current_user.is_authenticated:
@@ -206,24 +238,35 @@ def recuperar():
             _demasiados()
             return render_template('auth/recuperar.html', form=form), 429
         email = form.email.data.strip().lower()
-        user = Usuario.query.filter(db.func.lower(Usuario.email) == email).first()
-        registrar_accion("recuperacion", "Acceso", f"{PREFIJO_CODIGO_PEDIDO} para «{email[:60]}»",
-                         user.id if user else None, usuario=None)
-        if user and user.puede_ingresar and _puede_recibir_correo(user):
-            from app.correo import correo_codigo_recuperacion
-            minutos = current_app.config.get("RECUPERACION_MINUTOS", 15)
-            codigo = user.emitir_codigo_recuperacion(minutos)
-            db.session.commit()   # el código queda guardado antes de intentar el envío
-            if correo_codigo_recuperacion(user, codigo, minutos, url_for('auth.recuperar_codigo', _external=True)):
-                registrar_accion("recuperacion", "Acceso", PREFIJO_CODIGO_ENVIADO, user.id, usuario=user)
-            else:
-                registrar_accion("recuperacion", "Acceso", "No se pudo enviar el correo de recuperación (revisar MAIL_*)",
-                                 user.id, usuario=user)
+        _emitir_y_enviar(email)
         db.session.commit()
         session['recuperar_email'] = email
+        session['recuperar_pedido_en'] = datetime.now().timestamp()
         flash(MENSAJE_ENVIADO, 'info')
         return redirect(url_for('auth.recuperar_codigo'))
     return render_template('auth/recuperar.html', form=form)
+
+
+@auth.route('/recuperar/reenviar', methods=['POST'])
+def recuperar_reenviar():
+    """Pide un código nuevo para el correo que ya se escribió (mismos límites que el primero)."""
+    if current_user.is_authenticated:
+        return redirect(url_for('auth.perfil'))
+    form = PedirCodigoForm()
+    if not form.validate_on_submit():
+        flash('Escribe tu correo para reenviar el código.', 'danger')
+        return redirect(url_for('auth.recuperar'))
+    if _recuperacion_bloqueada():
+        _demasiados()
+        return redirect(url_for('auth.recuperar_codigo')), 303
+    email = form.email.data.strip().lower()
+    _emitir_y_enviar(email)
+    db.session.commit()
+    session['recuperar_email'] = email
+    session['recuperar_pedido_en'] = datetime.now().timestamp()
+    flash('Si el correo está registrado, te enviamos un código nuevo. El anterior ya no sirve; '
+          'usa el más reciente y revisa spam o promociones.', 'info')
+    return redirect(url_for('auth.recuperar_codigo'))
 
 
 @auth.route('/recuperar/codigo', methods=['GET', 'POST'])
@@ -253,4 +296,10 @@ def recuperar_codigo():
                          user.id if user else None, usuario=None)
         db.session.commit()
         flash(MENSAJE_RECUPERACION, 'danger')
-    return render_template('auth/recuperar_codigo.html', form=form)
+    email = (form.email.data or session.get('recuperar_email') or '').strip().lower()
+    # La espera sale de la sesión (cuándo lo pidió este navegador), no de la cuenta:
+    # así es idéntica exista o no el correo. El límite real lo aplica _puede_recibir_correo.
+    pedido = session.get('recuperar_pedido_en', 0)
+    espera = max(0, int(60 - (datetime.now().timestamp() - pedido))) if pedido else 0
+    return render_template('auth/recuperar_codigo.html', form=form, reenviar_form=PedirCodigoForm(formdata=None, email=email),
+                           espera=espera)

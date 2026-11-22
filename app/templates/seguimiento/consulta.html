@@ -2,6 +2,10 @@
 {% from "_macros.html" import campo, badge_pedido, badge_entrega %}
 {% block title %}Seguimiento de pedidos{% endblock %}
 
+{% block head %}
+{% if usuario %}<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="auth-card {% if usuario %}auth-card--seguimiento{% endif %}">
     {% if not current_user.is_authenticated %}
@@ -31,6 +35,47 @@
                 <span><i data-lucide="map-pin"></i> {{ p.ubicacion_actual or "Taller Principal" }}</span>
                 <span>Fase {{ p.fase_actual }} de {{ p.total_fases }}</span>
             </footer>
+
+            {% set r = rastreos[p.folio] %}
+            <ol class="mini-fases" aria-label="Fases del pedido {{ p.folio }}">
+                {% for f in FASES %}{% set n = loop.index %}
+                <li class="{% if n < p.fase_actual %}hecho{% elif n == p.fase_actual %}actual{% endif %}"
+                    {% if n == p.fase_actual %}aria-current="step"{% endif %}>
+                    <span><i data-lucide="{{ 'check' if n < p.fase_actual else f.icono }}"></i></span>
+                    <small>{{ f.nombre }}</small>
+                </li>
+                {% endfor %}
+            </ol>
+            <details class="seg-rastreo" data-folio="{{ p.folio }}" {% if loop.first %}open{% endif %}>
+                <summary><i data-lucide="route"></i> Ver mapa y movimientos <i data-lucide="chevron-down" class="seg-rastreo__flecha"></i></summary>
+
+
+                <div class="seg-rastreo__cuerpo">
+                    <div class="mapa seg-rastreo__mapa" id="mapa-{{ loop.index }}" role="img"
+                         aria-label="Mapa con la ubicación de {{ p.folio }}: {{ r.ubicacion }}"></div>
+                    <div>
+                        <h3 class="seg-rastreo__titulo">Movimientos</h3>
+                        {% if r.eventos %}
+                        <ol class="timeline timeline--compacta">
+                            {% for e in r.eventos %}
+                            <li>
+                                <span class="timeline__punto"></span>
+                                <div class="timeline__head">
+                                    <strong>{{ e.estado }}</strong>
+                                    <time datetime="{{ e.fecha.isoformat() }}">{{ e.fecha | fecha_es }} · {{ e.fecha | hora }}</time>
+                                </div>
+                                {% if e.ubicacion %}<p>{{ e.ubicacion }}</p>{% endif %}
+                                {% if e.nota %}<div class="timeline__nota">{{ e.nota }}</div>{% endif %}
+                            </li>
+                            {% endfor %}
+                        </ol>
+                        {% if r.mas_eventos %}<p class="muted small" style="padding: 0 4px;">…y {{ r.mas_eventos }} movimiento{{ 's' if r.mas_eventos != 1 }} anterior{{ 'es' if r.mas_eventos != 1 }}.</p>{% endif %}
+                        {% else %}
+                        <p class="vacio">Aún no hay movimientos registrados.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </details>
         </article>
         {% else %}
         <p class="vacio">No hay pedidos en proceso en este momento.</p>
@@ -78,4 +123,53 @@
     </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+{% if usuario and activos %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{{ url_for('static', filename='js/rastreo.js') }}"></script>
+<script>
+    /* Cada mapa se crea al abrir su recorrido: Leaflet necesita el contenedor visible. */
+    (function () {
+        const rastreos = {{ rastreos | tojson }};
+        const taller = {{ TALLER | tojson }};
+        if (typeof L === 'undefined' || !window.AyCMapa) return;
+
+        function dibujar(detalle) {
+            if (detalle.dataset.listo) return;
+            detalle.dataset.listo = '1';
+            const datos = rastreos[detalle.dataset.folio];
+            const caja = detalle.querySelector('.seg-rastreo__mapa');
+            const centro = (datos.lat != null && datos.lng != null) ? [datos.lat, datos.lng] : [taller.lat, taller.lng];
+            const mapa = AyCMapa.crearMapa(caja, centro, 13);
+
+            L.marker([taller.lat, taller.lng], { icon: AyCMapa.iconoTaller }).addTo(mapa)
+                .bindPopup('<strong>' + AyCMapa.escapar(taller.nombre) + '</strong>');
+
+            const ruta = datos.ruta.map((p) => [p.lat, p.lng]);
+            if (ruta.length > 1) {
+                L.polyline(ruta, { color: AyCMapa.colorRuta(), weight: 4, opacity: 0.8, dashArray: '8 8' }).addTo(mapa);
+                datos.ruta.slice(0, -1).forEach((p) => {
+                    L.marker([p.lat, p.lng], { icon: AyCMapa.puntoRuta }).addTo(mapa)
+                        .bindPopup('<strong>' + AyCMapa.escapar(p.estado) + '</strong><br>' + AyCMapa.escapar(p.ubicacion) + '<br><small>' + p.fecha + '</small>');
+                });
+            }
+            if (datos.lat != null && datos.lng != null) {
+                L.marker([datos.lat, datos.lng], { icon: AyCMapa.iconoActual }).addTo(mapa)
+                    .bindPopup('<strong>' + AyCMapa.escapar(datos.folio) + '</strong><br>' + AyCMapa.escapar(datos.estado) + ' · ' + AyCMapa.escapar(datos.ubicacion))
+                    .openPopup();
+            }
+            const puntos = ruta.concat([[taller.lat, taller.lng]]);
+            if (puntos.length > 1) mapa.fitBounds(puntos, { padding: [40, 40], maxZoom: 15 });
+            setTimeout(() => mapa.invalidateSize(), 60);
+        }
+
+        document.querySelectorAll('.seg-rastreo').forEach((d) => {
+            if (d.open) dibujar(d);
+            d.addEventListener('toggle', () => { if (d.open) dibujar(d); });
+        });
+    })();
+</script>
+{% endif %}
 {% endblock %}

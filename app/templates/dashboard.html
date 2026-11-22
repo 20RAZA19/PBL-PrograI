@@ -5,26 +5,117 @@
 {% block content %}
 <div class="page-head page-head--dash">
     <div>
-        <h1>{{ saludo }}, {{ current_user.nombre.split()[0] }}</h1>
-        <p>{{ now_es }} · {% if recomendaciones %}Hay {{ recomendaciones | length }} punto{{ 's' if recomendaciones | length != 1 }} que revisar hoy.{% else %}Todo en orden: no hay alertas pendientes.{% endif %}</p>
+        <h1><span data-saludo>{{ saludo }}</span>, {{ current_user.nombre.split()[0] }}</h1>
+        <p><time data-hora-local>{{ now_es }}</time> · {% if recomendaciones %}Hay {{ recomendaciones | length }} punto{{ 's' if recomendaciones | length != 1 }} que revisar hoy.{% else %}Todo en orden: no hay alertas pendientes.{% endif %}</p>
     </div>
 </div>
 
-<!-- Indicadores de gestión con semáforo -->
-<section class="indicadores" aria-label="Indicadores de gestión">
-    {% for k in indicadores %}
-    <div class="indicador indicador--{{ k.nivel }}">
-        <div class="indicador__head">
-            <span class="indicador__icono"><i data-lucide="{{ k.icono }}"></i></span>
-            <span>{{ k.titulo }}</span>
-            <span class="semaforo semaforo--{{ k.nivel }}" title="{{ {'ok': 'Dentro de la meta', 'warn': 'Cerca del límite', 'danger': 'Fuera de la meta', 'neutral': 'Sin datos suficientes'}[k.nivel] }}"></span>
-        </div>
-        <strong class="indicador__valor">{{ k.valor }}</strong>
-        <small>{{ k.detalle }}</small>
-        <small class="indicador__meta">{{ k.meta }}</small>
-    </div>
+<!-- Para hoy: cuatro números que llevan directo a su sección -->
+<section class="hoy" aria-label="Para hoy">
+    {% for t in tarjetas %}
+    <a class="hoy-tarjeta hoy-tarjeta--{{ t.nivel }}" href="{{ t.url }}">
+        <span class="hoy-tarjeta__icono"><i data-lucide="{{ t.icono }}"></i></span>
+        <span class="hoy-tarjeta__texto">
+            <strong>{{ t.valor }}</strong>
+            <span>{{ t.titulo }}</span>
+            <small>{{ t.detalle }}</small>
+        </span>
+        <i data-lucide="chevron-right" class="hoy-tarjeta__flecha"></i>
+    </a>
     {% endfor %}
 </section>
+
+<div class="dash-dos">
+    {% if current_user.puede_atender_solicitudes %}
+    <!-- Propuestas de prendas que llegan desde el portal del cliente -->
+    <section class="panel" id="solicitudes-nuevas">
+        <div class="panel__head">
+            <div>
+                <h2>Aprobaciones pendientes</h2>
+                <p>Las que llevan más tiempo esperando, primero</p>
+            </div>
+            {% if esperando_cliente %}<span class="badge badge--info" title="Cotizaciones publicadas que esperan la decisión del cliente">{{ esperando_cliente }} esperando al cliente</span>{% endif %}
+        </div>
+    {% for s in solicitudes_nuevas %}
+    {% set con_foto = s.lineas | selectattr("diseno") | map(attribute="diseno") | selectattr("imagen") | first %}
+    <a class="solicitud-nueva" href="{{ url_for('solicitudes.detalle', solicitud_id=s.id) }}">
+        {% if con_foto %}<img class="solicitud-nueva__foto" src="{{ url_for('static', filename=con_foto.imagen) }}" alt="">
+        {% else %}<span class="solicitud-nueva__foto"><i data-lucide="shirt"></i></span>{% endif %}
+        <div>
+            <strong>{{ s.folio }} · {{ s.cliente.nombre }}</strong>
+            <small>{{ "{:,}".format(s.total_prendas) }} prendas · {{ s.resumen_prendas }}</small>
+        </div>
+        <div class="solicitud-nueva__meta">
+            {% if s.dias_esperando >= 2 %}<span class="badge badge--warn">Espera hace {{ s.dias_esperando }} días</span>
+            {% else %}<span class="badge badge--info">{{ 'Llegó hoy' if s.dias_esperando == 0 else 'Llegó ayer' }}</span>{% endif %}
+            <span>{% if s.fecha_deseada %}La necesitan el {{ s.fecha_deseada | fecha_es }}{% else %}Sin fecha preferida{% endif %}</span>
+        </div>
+    </a>
+    {% else %}
+    <p class="vacio">No hay propuestas por revisar. Cuando un cliente proponga prendas desde su portal aparecerán aquí.</p>
+    {% endfor %}
+        {% if total_solicitudes > solicitudes_nuevas | length %}
+        <a class="panel__mas" href="{{ url_for('solicitudes.lista', estado='enviada') }}">Ver las {{ total_solicitudes }} pendientes <i data-lucide="arrow-right"></i></a>
+        {% elif solicitudes_nuevas %}
+        <a class="panel__mas" href="{{ url_for('solicitudes.lista') }}">Ir a solicitudes <i data-lucide="arrow-right"></i></a>
+        {% endif %}
+    </section>
+    {% else %}
+    <!-- Insumos que conviene reponer (los más críticos) -->
+    <section class="panel">
+        <div class="panel__head">
+            <div>
+                <h2>Insumos por reponer</h2>
+                <p>Los que están más por debajo de su mínimo</p>
+            </div>
+        </div>
+        <div class="lista-compacta">
+            {% for i in insumos_reponer %}
+            <a href="{{ url_for('telas.detalle', tela_id=i.id) }}">
+                <span class="kpi__icon"><i data-lucide="package"></i></span>
+                <div class="grow">
+                    <strong>{{ i.nombre }}</strong>
+                    <small>{{ i.codigo }} · quedan {{ i.cantidad_disponible | round(1) }} {{ i.unidad_medida | lower }} · mínimo {{ i.stock_minimo | round(1) }}</small>
+                </div>
+                <span class="badge {{ 'badge--danger' if i.alerta_stock == 'critico' else 'badge--warn' }}">{{ i.cobertura }}%</span>
+            </a>
+            {% else %}
+            <p class="vacio">Todo el inventario está sobre su mínimo.</p>
+            {% endfor %}
+        </div>
+        {% if total_reponer > insumos_reponer | length %}
+        <a class="panel__mas" href="{{ url_for('telas.lista', estado='Stock Bajo') }}">Ver los {{ total_reponer }} insumos <i data-lucide="arrow-right"></i></a>
+        {% endif %}
+    </section>
+    {% endif %}
+
+    <!-- Próximas entregas: lo vencido arriba -->
+    <section class="panel">
+        <div class="panel__head">
+            <div>
+                <h2>Próximas entregas</h2>
+                <p>Lo vencido y lo que vence antes, arriba</p>
+            </div>
+        </div>
+        <div class="lista-compacta">
+            {% for p in proximas %}
+            <a href="{{ url_for('rastreo.detalle', folio=p.folio) }}">
+                <span class="kpi__icon"><i data-lucide="package"></i></span>
+                <div class="grow">
+                    <strong>{{ p.folio }} · {{ p.cliente.nombre }}</strong>
+                    <small>{{ "{:,}".format(p.cantidad) }} {{ p.modelo_prenda }} · {{ p.estado }}</small>
+                </div>
+                {{ badge_entrega(p) }}
+            </a>
+            {% else %}
+            <p class="vacio">No hay entregas pendientes.</p>
+            {% endfor %}
+        </div>
+        {% if total_sin_entregar > proximas | length %}
+        <a class="panel__mas" href="{{ url_for('main.kanban_pedidos') }}">Ver los {{ total_sin_entregar }} pedidos en el tablero <i data-lucide="arrow-right"></i></a>
+        {% endif %}
+    </section>
+</div>
 
 <!-- Centro de atención: recomendaciones priorizadas -->
 <section class="panel atencion" id="centro-atencion">
@@ -59,13 +150,13 @@
     {% endmacro %}
     {% if recomendaciones %}
     <div class="rec-lista">
-        {% for r in recomendaciones[:4] %}{{ rec_item(r) }}{% endfor %}
+        {% for r in recomendaciones[:3] %}{{ rec_item(r) }}{% endfor %}
     </div>
-    {% if recomendaciones | length > 4 %}
+    {% if recomendaciones | length > 3 %}
     <details class="rec-mas">
-        <summary>Ver {{ recomendaciones | length - 4 }} punto{{ 's' if recomendaciones | length - 4 != 1 }} más</summary>
+        <summary>Ver {{ recomendaciones | length - 3 }} punto{{ 's' if recomendaciones | length - 3 != 1 }} más</summary>
         <div class="rec-lista">
-            {% for r in recomendaciones[4:] %}{{ rec_item(r) }}{% endfor %}
+            {% for r in recomendaciones[3:] %}{{ rec_item(r) }}{% endfor %}
         </div>
     </details>
     {% endif %}
@@ -77,303 +168,52 @@
     {% endif %}
 </section>
 
-<!-- Gráficos (Chart.js) -->
-<div class="dash-grid">
-    <section class="panel span-7">
-        <div class="panel__head">
-            <div>
-                <h2>Pedidos por Mes</h2>
-                <p>Órdenes recibidas y entregadas · la línea muestra las prendas recibidas</p>
-            </div>
-        </div>
-        <div class="panel__body"><div class="grafico"><canvas id="grafico-pedidos" role="img" aria-label="Pedidos por mes"></canvas></div></div>
-    </section>
-    <section class="panel span-5">
-        <div class="panel__head">
-            <div>
-                <h2>Consumo de Telas</h2>
-                <p>Metros que salieron de bodega por mes</p>
-            </div>
-        </div>
-        <div class="panel__body"><div class="grafico"><canvas id="grafico-consumo" role="img" aria-label="Consumo de telas por mes"></canvas></div></div>
-    </section>
-    {% if graficos.finanzas %}
-    <section class="panel span-12">
-        <div class="panel__head">
-            <div>
-                <h2>Ventas y Ganancia Estimada</h2>
-                <p>Valor de los pedidos recibidos cada mes y su ganancia según la ficha de costos</p>
-            </div>
-            <a href="{{ url_for('costos.index') }}" class="btn btn--outline btn--sm"><i data-lucide="calculator"></i> Ver márgenes</a>
-        </div>
-        <div class="panel__body"><div class="grafico grafico--bajo"><canvas id="grafico-finanzas" role="img" aria-label="Ventas y ganancia por mes"></canvas></div></div>
-    </section>
-    {% endif %}
-</div>
-<script type="application/json" id="datos-graficos">{{ graficos | tojson }}</script>
 
-<!-- Barra superior -->
-<div class="topbar">
-    <form class="search" method="get">
-        <i data-lucide="search"></i>
-        <input type="text" name="q" value="{{ q }}"
-               placeholder="Buscar tela o código Pantone...">
-        {% if estado %}<input type="hidden" name="estado" value="{{ estado }}">{% endif %}
-    </form>
-    <div class="page-head__acciones">
-        {% if current_user.puede_atender_solicitudes %}
-        <a href="{{ url_for('solicitudes.lista', estado='enviada') }}" class="btn btn--outline">
-            <i data-lucide="clipboard-check"></i> Aprobaciones pendientes
-        </a>
-        {% endif %}
-        {% if current_user.puede_editar_inventario %}
-        <a href="{{ url_for('telas.movimiento', tipo='entrada') }}" class="btn btn--primary">
-            <i data-lucide="plus"></i> Registrar Entrada de Material
-        </a>
-        {% else %}
-        <a href="{{ url_for('contactos.nuevo_cliente') }}" class="btn btn--primary">
-            <i data-lucide="user-plus"></i> Registrar Cliente
-        </a>
-        {% endif %}
+<h2 class="dash-subtitulo">Cómo vamos <span>· últimos 90 días</span></h2>
+<!-- Indicadores de gestión con semáforo -->
+<section class="indicadores" aria-label="Indicadores de gestión">
+    {% for k in indicadores %}
+    <div class="indicador indicador--{{ k.nivel }}">
+        <div class="indicador__head">
+            <span class="indicador__icono"><i data-lucide="{{ k.icono }}"></i></span>
+            <span>{{ k.titulo }}</span>
+            <span class="semaforo semaforo--{{ k.nivel }}" title="{{ {'ok': 'Dentro de la meta', 'warn': 'Cerca del límite', 'danger': 'Fuera de la meta', 'neutral': 'Sin datos suficientes'}[k.nivel] }}"></span>
+        </div>
+        <strong class="indicador__valor">{{ k.valor }}</strong>
+        <small>{{ k.detalle }}</small>
+        <small class="indicador__meta">{{ k.meta }}</small>
     </div>
-</div>
-
-<!-- Tarjetas de resumen -->
-<section class="kpis">
-    <div class="kpi">
-        <div class="kpi__head">Rollos de Tela Disponibles
-            <span class="kpi__icon"><i data-lucide="archive"></i></span>
-        </div>
-        <p class="kpi__valor">{{ resumen.metros_totales | metros }} <small>mts</small></p>
-        <div class="kpi__pie"><span class="badge badge--ok">Estable</span> Metraje total registrado</div>
-    </div>
-
-    <div class="kpi">
-        <div class="kpi__head">Insumos con Stock Bajo
-            <span class="kpi__icon"><i data-lucide="triangle-alert"></i></span>
-        </div>
-        <p class="kpi__valor">{{ resumen.telas_bajo_stock }} <small>Variedades</small></p>
-        <div class="kpi__pie">
-            {% if resumen.telas_criticas %}
-                <span class="badge badge--danger">{{ resumen.telas_criticas }} crítica{{ 's' if resumen.telas_criticas != 1 }}</span> Requieren reabastecimiento
-            {% elif resumen.telas_bajo_stock %}
-                <span class="badge badge--warn">Alerta</span> Requieren reabastecimiento
-            {% else %}
-                <span class="badge badge--ok">Al día</span> Sin faltantes
-            {% endif %}
-        </div>
-    </div>
-
-    <div class="kpi">
-        <div class="kpi__head">Proyectos en Producción
-            <span class="kpi__icon"><i data-lucide="refresh-cw"></i></span>
-        </div>
-        <p class="kpi__valor">{{ resumen.pedidos_produccion }} <small>Órdenes</small></p>
-        <div class="kpi__pie"><span class="badge badge--info">{{ resumen.unidades_produccion }} und.</span> Activas en taller · {{ resumen.pedidos_en_ruta }} en ruta</div>
-    </div>
-
-    <div class="kpi">
-        <div class="kpi__head">Diseños Archivados
-            <span class="kpi__icon"><i data-lucide="box"></i></span>
-        </div>
-        <p class="kpi__valor">{{ resumen.total_disenos }} <small>Modelos</small></p>
-        <div class="kpi__pie"><span class="badge badge--ok">Catálogo</span> Diseños de uniformes</div>
-    </div>
-
-    {% if admin_kpis %}
-    <a class="kpi kpi--accent" href="{{ url_for('admin.usuarios') }}">
-        <div class="kpi__head">Solicitudes de Acceso
-            <span class="kpi__icon"><i data-lucide="user-check"></i></span>
-        </div>
-        <p class="kpi__valor">{{ admin_kpis.pendientes }} <small style="color: rgba(255,255,255,0.7);">Pendientes</small></p>
-        <div class="kpi__pie">{{ admin_kpis.usuarios }} usuarios · {{ admin_kpis.por_rol.gestor }} taller · {{ admin_kpis.por_rol.ventas }} ventas · {{ admin_kpis.por_rol.cliente }} clientes</div>
-    </a>
-    {% endif %}
-</section>
-
-<!-- Gráficos -->
-<div class="dash-grid">
-    <section class="panel span-7">
-        <div class="panel__head">
-            <div>
-                <h2>Pedidos por Fase</h2>
-                <p>Distribución actual de órdenes en el flujo de producción</p>
-            </div>
-            <a href="{{ url_for('main.kanban_pedidos') }}" class="btn btn--outline btn--sm"><i data-lucide="kanban"></i> Ver tablero</a>
-        </div>
-        <div class="panel__body">
-            <div class="barras" role="img" aria-label="Pedidos por fase">
-                {% for f in grafico_fases %}
-                <div class="barra">
-                    <span class="barra__valor">{{ f.valor }}</span>
-                    <span class="barra__col {% if not f.valor %}barra__col--cero{% endif %}" style="height: {{ [f.altura, 3] | max }}%;"></span>
-                    <span class="barra__label">{{ f.nombre }}</span>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-    </section>
-
-    <section class="panel span-5">
-        <div class="panel__head">
-            <div>
-                <h2>Salud del Inventario</h2>
-                <p>Insumos activos según su nivel de stock</p>
-            </div>
-        </div>
-        <div class="panel__body">
-            {% set a = salud.pct_ok %}{% set b = salud.pct_ok + salud.pct_bajo %}
-            <div class="dona-wrap">
-                <div class="dona" style="background: conic-gradient(var(--c-fern) 0 {{ a }}%, #e0a43a {{ a }}% {{ b }}%, var(--danger-text) {{ b }}% 100%);">
-                    <div class="dona__centro"><div><strong>{{ salud.total }}</strong><span>insumos</span></div></div>
-                </div>
-                <div class="dona-leyenda">
-                    <div><span><i style="background: var(--c-fern);"></i> Disponible</span><strong>{{ salud.ok }}</strong></div>
-                    <div><span><i style="background: #e0a43a;"></i> Stock bajo</span><strong>{{ salud.bajo }}</strong></div>
-                    <div><span><i style="background: var(--danger-text);"></i> Crítico</span><strong>{{ salud.critico }}</strong></div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section class="panel span-6">
-        <div class="panel__head">
-            <div>
-                <h2>Stock vs. Mínimo</h2>
-                <p>Insumos con menor cobertura · la línea marca el stock mínimo</p>
-            </div>
-        </div>
-        <div class="panel__body">
-            <div class="stock-lista">
-                {% for s in grafico_stock %}
-                <a class="stock-fila" href="{{ url_for('telas.detalle', tela_id=s.tela.id) }}">
-                    <div class="stock-fila__head">
-                        <span class="tela"><span class="muestra" style="background: {{ s.tela.color_hex }}"></span>{{ s.tela.nombre }}</span>
-                        <strong>{{ s.tela.cantidad_disponible | metros }} <span class="muted small">/ {{ s.tela.stock_minimo | metros }} {{ s.tela.unidad_medida | unidad_corta }}</span></strong>
-                    </div>
-                    <div class="pista">
-                        <div class="pista__relleno {% if s.tela.alerta_stock == 'critico' %}pista__relleno--critico{% elif s.tela.alerta_stock == 'bajo' %}pista__relleno--bajo{% endif %}" style="width: {{ s.ancho }}%;"></div>
-                        <span class="pista__minimo" style="left: {{ s.minimo }}%;"></span>
-                    </div>
-                </a>
-                {% else %}
-                <p class="vacio">Sin telas activas.</p>
-                {% endfor %}
-            </div>
-        </div>
-    </section>
-
-    <section class="panel span-6">
-        <div class="panel__head">
-            <div>
-                <h2>Movimientos · últimos 7 días</h2>
-                <p>Cantidades que entraron y salieron del almacén</p>
-            </div>
-            <div class="leyenda">
-                <span><i style="background: var(--c-fern);"></i> Entradas</span>
-                <span><i style="background: #d9922e;"></i> Salidas</span>
-            </div>
-        </div>
-        <div class="panel__body">
-            <div class="barras barras--dobles" role="img" aria-label="Movimientos de la semana">
-                {% set dias_es = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"] %}
-                {% for d in movimientos_semana %}
-                <div class="barra" title="{{ d.dia | fecha_es }}: +{{ d.entradas | metros }} / −{{ d.salidas | metros }} mts">
-                    <div class="barra__par">
-                        <span class="barra__col {% if not d.entradas %}barra__col--cero{% endif %}" style="height: {{ [d.alto_entradas, 3] | max }}%;"></span>
-                        <span class="barra__col barra__col--salida {% if not d.salidas %}barra__col--cero{% endif %}" style="height: {{ [d.alto_salidas, 3] | max }}%;"></span>
-                    </div>
-                    <span class="barra__label">{{ dias_es[d.dia.weekday()] }}<br>{{ d.dia.day }}</span>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-    </section>
-</div>
-
-<!-- Próximas entregas -->
-<section class="panel">
-    <div class="panel__head">
-        <div>
-            <h2>Próximas Entregas</h2>
-            <p>Pedidos pendientes ordenados por fecha límite</p>
-        </div>
-        <a href="{{ url_for('rastreo.lista') }}" class="btn btn--outline btn--sm"><i data-lucide="map"></i> Mapa de rastreo</a>
-    </div>
-    <div class="lista-compacta">
-        {% for p in proximas %}
-        <a href="{{ url_for('rastreo.detalle', folio=p.folio) }}">
-            <span class="kpi__icon"><i data-lucide="package"></i></span>
-            <div class="grow">
-                <strong>{{ p.folio }} · {{ p.modelo_prenda }}</strong>
-                <small>{{ p.cliente.nombre }} · {{ p.cantidad }} und. · Límite {{ p.fecha_limite | fecha_es }}</small>
-            </div>
-            {{ badge_pedido(p) }}
-            {{ badge_entrega(p) }}
-        </a>
-        {% else %}
-        <p class="vacio">No hay entregas pendientes.</p>
-        {% endfor %}
-    </div>
-</section>
-
-<!-- Tabla de materia prima -->
-<section class="panel">
-    <div class="panel__head">
-        <div>
-            <h2>Materia Prima Registrada</h2>
-            <p>Control en tiempo real de telas, hilos y avíos disponibles</p>
-        </div>
-        <form method="get" class="filtro">
-            <i data-lucide="filter"></i>
-            {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
-            <select name="estado" onchange="this.form.submit()">
-                <option value="">Todos los estados</option>
-                {% for e in ["Disponible", "Stock Bajo", "Crítico"] %}
-                    <option value="{{ e }}" {% if estado == e %}selected{% endif %}>{{ e }}</option>
-                {% endfor %}
-            </select>
-        </form>
-    </div>
-
-    {% include "telas/_tabla.html" %}
-</section>
-
-<!-- Propuestas de prendas que llegan desde el portal del cliente -->
-<section class="panel" id="solicitudes-nuevas">
-    <div class="panel__head">
-        <div>
-            <h2>Aprobaciones pendientes</h2>
-            <p>Prendas que los clientes proponen desde su portal. Apruébalas con precios por cantidad o deniégalas con su motivo</p>
-        </div>
-        <div class="flex" style="gap: 10px; align-items: center;">
-            {% if esperando_cliente %}<span class="badge badge--info" title="Cotizaciones publicadas que esperan la decisión del cliente">{{ esperando_cliente }} esperando al cliente</span>{% endif %}
-            <a href="{{ url_for('solicitudes.lista') }}" class="btn btn--outline btn--sm"><i data-lucide="clipboard-list"></i> Ver todas</a>
-        </div>
-    </div>
-
-    {% for s in solicitudes_nuevas %}
-    {% set con_foto = s.lineas | selectattr("diseno") | map(attribute="diseno") | selectattr("imagen") | first %}
-    <a class="solicitud-nueva" href="{{ url_for('solicitudes.detalle', solicitud_id=s.id) }}">
-        {% if con_foto %}<img class="solicitud-nueva__foto" src="{{ url_for('static', filename=con_foto.imagen) }}" alt="">
-        {% else %}<span class="solicitud-nueva__foto"><i data-lucide="shirt"></i></span>{% endif %}
-        <div>
-            <strong>{{ s.folio }} · {{ s.cliente.nombre }}</strong>
-            <small>{{ "{:,}".format(s.total_prendas) }} prendas · {{ s.resumen_prendas }}</small>
-        </div>
-        <div class="solicitud-nueva__meta">
-            {% if s.dias_esperando >= 2 %}<span class="badge badge--warn">Espera hace {{ s.dias_esperando }} días</span>
-            {% else %}<span class="badge badge--info">{{ 'Llegó hoy' if s.dias_esperando == 0 else 'Llegó ayer' }}</span>{% endif %}
-            <span>{% if s.fecha_deseada %}La necesitan el {{ s.fecha_deseada | fecha_es }}{% else %}Sin fecha preferida{% endif %}</span>
-        </div>
-    </a>
-    {% else %}
-    <p class="vacio">No hay propuestas por revisar. Cuando un cliente proponga prendas desde su portal aparecerán aquí.</p>
     {% endfor %}
 </section>
+
+
+{% if current_user.rol == 'admin' %}
+<a class="dash-enlace" href="{{ url_for('reportes.index') }}">
+    <i data-lucide="chart-line"></i>
+    <span><strong>Gráficos de tendencia</strong><small>Pedidos por mes, consumo de telas, ventas y ganancia</small></span>
+    <i data-lucide="arrow-right"></i>
+</a>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="{{ url_for('static', filename='js/graficos.js') }}"></script>
+<script>
+    /* Muestra la fecha, la hora y el saludo con el reloj de la computadora del usuario */
+    (function () {
+        const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+        const ahora = new Date();
+        const hh = String(ahora.getHours()).padStart(2, '0');
+        const mm = String(ahora.getMinutes()).padStart(2, '0');
+        const t = document.querySelector('[data-hora-local]');
+        if (t) {
+            t.textContent = ahora.getDate() + ' ' + MESES[ahora.getMonth()] + ' ' + ahora.getFullYear() + ' · ' + hh + ':' + mm;
+            t.setAttribute('datetime', ahora.toISOString());
+        }
+        const s = document.querySelector('[data-saludo]');
+        if (s) {
+            const h = ahora.getHours();
+            s.textContent = h < 12 ? 'Buenos días' : (h < 19 ? 'Buenas tardes' : 'Buenas noches');
+        }
+    })();
+</script>
 {% endblock %}

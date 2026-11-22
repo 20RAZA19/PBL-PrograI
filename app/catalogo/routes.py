@@ -8,6 +8,7 @@ from app.extensions import db
 from app.forms import AccionForm
 from app.models import Diseno, DisenoTela, Cliente, Insumo, Pedido
 from app.decorators import roles_required
+from app.utils import paginar
 
 catalogo = Blueprint("catalogo", __name__)
 
@@ -36,9 +37,10 @@ def lista():
     if cliente_id and current_user.es_staff:
         query = query.filter(Diseno.cliente_id == cliente_id)
 
-    disenos = query.order_by(Diseno.creado_en.desc()).all()
+    pagina = paginar(query.order_by(Diseno.creado_en.desc()), por_defecto=24)
+    disenos = pagina.items
     clientes = Cliente.query.order_by(Cliente.nombre).all() if current_user.es_staff else []
-    return render_template("catalogo/lista.html", disenos=disenos, q=q, archivados=archivados,
+    return render_template("catalogo/lista.html", disenos=disenos, pagina=pagina, q=q, archivados=archivados,
                            clientes=clientes, cliente_id=cliente_id)
 
 

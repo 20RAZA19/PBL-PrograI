@@ -10,7 +10,7 @@ from app.extensions import db
 from app.indicadores import tasas_por_linea
 from app.models import META_DEFECTOS_PCT, Pedido, RegistroCalidad
 from app.notificaciones.servicios import notificar, usuarios_con_rol
-from app.utils import volver_a
+from app.utils import paginar, volver_a
 
 calidad = Blueprint("calidad", __name__)
 
@@ -31,22 +31,27 @@ def index():
         query = RegistroCalidad.query.filter_by(resuelto=False)  # los abiertos se ven sin importar la fecha
     if linea:
         query = query.filter(RegistroCalidad.linea == linea)
-    registros = query.order_by(RegistroCalidad.resuelto, RegistroCalidad.fecha.desc()).all()
+    pagina = paginar(query.order_by(RegistroCalidad.resuelto, RegistroCalidad.fecha.desc()))
+    registros = pagina.items
 
-    periodo = RegistroCalidad.query.filter(RegistroCalidad.fecha >= desde).all()
-    por_categoria = Counter()
-    for r in periodo:
-        por_categoria[r.categoria] += r.cantidad
+    # Totales del periodo con SUM/GROUP BY: no hace falta traer cada registro
+    en_periodo = RegistroCalidad.fecha >= desde
+    por_categoria = Counter(dict(
+        db.session.query(RegistroCalidad.categoria, db.func.sum(RegistroCalidad.cantidad))
+        .filter(en_periodo).group_by(RegistroCalidad.categoria).all()))
+    afectadas = db.session.query(db.func.coalesce(db.func.sum(RegistroCalidad.cantidad), 0)).filter(en_periodo).scalar()
+    reprocesos = (db.session.query(db.func.coalesce(db.func.sum(RegistroCalidad.cantidad), 0))
+                  .filter(en_periodo, RegistroCalidad.tipo == "reproceso").scalar())
     lineas = tasas_por_linea(dias)
     producidas = max((l["producidas"] for l in lineas), default=0)
     resumen = {
-        "afectadas": sum(r.cantidad for r in periodo),
-        "reprocesos": sum(r.cantidad for r in periodo if r.tipo == "reproceso"),
+        "afectadas": int(afectadas or 0),
+        "reprocesos": int(reprocesos or 0),
         "abiertos": RegistroCalidad.query.filter_by(resuelto=False).count(),
         "peor": max((l for l in lineas if l["tasa"] is not None), key=lambda l: l["tasa"], default=None),
         "producidas": producidas,
     }
-    return render_template("calidad/index.html", registros=registros, lineas=lineas, resumen=resumen,
+    return render_template("calidad/index.html", registros=registros, pagina=pagina, lineas=lineas, resumen=resumen,
                            por_categoria=por_categoria.most_common(), dias=dias, estado=estado,
                            linea=linea, meta=META_DEFECTOS_PCT, resolver_form=ResolverForm())
 

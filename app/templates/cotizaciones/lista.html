@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import paginacion %}
 {% block title %}Cotizaciones{% endblock %}
 
 {% set clases_estado = {"borrador": "badge--neutral", "enviada": "badge--info", "aceptada": "badge--ok", "rechazada": "badge--danger"} %}
@@ -120,5 +121,6 @@
             </tbody>
         </table>
     </div>
+    {{ paginacion(pagina, "cotizaciones") }}
 </section>
 {% endblock %}

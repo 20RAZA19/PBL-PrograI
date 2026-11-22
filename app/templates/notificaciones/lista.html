@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import boton_accion %}
+{% from "_macros.html" import boton_accion, paginacion %}
 {% block title %}Notificaciones{% endblock %}
 
 {% block content %}
@@ -46,5 +46,6 @@
         <p class="avisos__vacio"><i data-lucide="bell-off"></i> {{ 'No tienes avisos sin leer.' if filtro == 'no-leidas' else 'No tienes notificaciones.' }}</p>
         {% endfor %}
     </div>
+    {{ paginacion(pagina, "avisos") }}
 </section>
 {% endblock %}

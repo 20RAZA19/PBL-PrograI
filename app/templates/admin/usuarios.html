@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import boton_accion %}
+{% from "_macros.html" import boton_accion, paginacion %}
 {% block title %}Gestión de Usuarios{% endblock %}
 
 {% set clases_estado = {"aprobado": "badge--ok", "pendiente": "badge--warn", "rechazado": "badge--danger"} %}
@@ -19,6 +19,23 @@
         <div class="chip-stat"><strong>{{ stats.por_rol.cliente }}</strong> clientes</div>
     </div>
 </div>
+
+{% if duplicados %}
+<div class="flash flash--warn duplicados" role="alert">
+    <i data-lucide="phone-off"></i>
+    <div>
+        <strong>Hay {{ duplicados | length }} número{{ 's' if duplicados | length != 1 }} de teléfono repetido{{ 's' if duplicados | length != 1 }} entre cuentas.</strong>
+        El bot de WhatsApp y el token de seguimiento no responden a un número que está en dos cuentas. Deja cada número en una sola cuenta:
+        <ul>
+            {% for grupo in duplicados %}
+            <li>{{ grupo[0].telefono }} —
+                {% for u in grupo %}<a href="{{ url_for('admin.editar_usuario', usuario_id=u.id) }}">{{ u.nombre }}</a>{{ ", " if not loop.last }}{% endfor %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
 
 <div class="topbar">
     <div class="tabs">
@@ -95,6 +112,7 @@
         </article>
         {% endfor %}
     </div>
+    {{ paginacion(pagina, "solicitudes de acceso") }}
     {% else %}
     <div class="vacio">
         <i data-lucide="inbox" style="width: 48px; height: 48px; opacity: 0.5; margin-bottom: 16px;"></i>
@@ -153,6 +171,7 @@
             </tbody>
         </table>
     </div>
+    {{ paginacion(pagina, "usuarios") }}
 </section>
 {% endif %}
 {% endblock %}

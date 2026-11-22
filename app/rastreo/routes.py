@@ -7,6 +7,7 @@ from app.models import Pedido, Cliente, Insumo, NOMBRES_FASES
 from app.decorators import roles_required
 from app.forms import RastreoForm, AsociarInsumoForm
 from app.rastreo.servicios import registrar_evento, puede_ver_pedido, pedidos_visibles
+from app.utils import paginar
 
 rastreo = Blueprint("rastreo", __name__)
 
@@ -60,9 +61,15 @@ def lista():
     elif vista == "activos":
         query = query.filter(Pedido.estado != "Entregado")
 
-    pedidos = query.order_by(Pedido.fecha_limite).all()
+    pagina = paginar(query, por_defecto=10, ordenes={
+        "entrega": ("Fecha de entrega", [Pedido.fecha_limite]),
+        "reciente": ("Más reciente", [Pedido.creado_en.desc()]),
+        "folio": ("Folio", [Pedido.folio]),
+        "cliente": ("Cliente A→Z", [Cliente.nombre, Pedido.fecha_limite]),
+    })
+    pedidos = pagina.items
     marcadores = [_serializar(p) for p in pedidos if p.tiene_coordenadas]
-    return render_template("rastreo/lista.html", pedidos=pedidos, q=q, fase=fase,
+    return render_template("rastreo/lista.html", pedidos=pedidos, pagina=pagina, q=q, fase=fase,
                            vista=vista, marcadores=marcadores)
 
 

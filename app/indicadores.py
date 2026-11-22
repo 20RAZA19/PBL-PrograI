@@ -2,6 +2,7 @@
 
 Todo se calcula al vuelo con los datos actuales: no hay tablas extra.
 """
+from bisect import bisect_right
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -321,16 +322,54 @@ def _meses_atras(n):
     return list(reversed(salida))
 
 
-def graficos(usuario, meses=6):
-    periodos = _meses_atras(meses)
-    etiquetas = [f"{MESES[m - 1]} {str(a)[2:]}" for a, m in periodos]
-    indice = {p: i for i, p in enumerate(periodos)}
-    desde = datetime(periodos[0][0], periodos[0][1], 1)
+def cubetas(dias):
+    """Divide los últimos `dias` en tramos para los gráficos.
 
-    recibidos, entregados, prendas = [0] * meses, [0] * meses, [0] * meses
-    ingresos, ganancias = [0.0] * meses, [0.0] * meses
+    7 y 30 días → un punto por día; 90 días → por semana; un año → por mes.
+    Devuelve (inicios, etiquetas, fin): cada tramo va de inicios[i] a inicios[i+1] (o a `fin`).
+    """
+    hoy = date.today()
+    fin = datetime.combine(hoy + timedelta(days=1), datetime.min.time())
+    if dias <= 31:
+        dias_lista = [hoy - timedelta(days=d) for d in range(dias - 1, -1, -1)]
+        inicios = [datetime.combine(d, datetime.min.time()) for d in dias_lista]
+        etiquetas = [f"{d.day} {MESES[d.month - 1]}" for d in dias_lista]
+    elif dias <= 120:
+        semanas = -(-dias // 7)
+        primero = hoy - timedelta(days=hoy.weekday()) - timedelta(weeks=semanas - 1)   # lunes
+        lunes = [primero + timedelta(weeks=s) for s in range(semanas)]
+        inicios = [datetime.combine(d, datetime.min.time()) for d in lunes]
+        etiquetas = [f"Sem. {d.day} {MESES[d.month - 1]}" for d in lunes]
+    else:
+        periodos = _meses_atras(12 if dias <= 366 else dias // 30)
+        inicios = [datetime(a, m, 1) for a, m in periodos]
+        etiquetas = [f"{MESES[m - 1]} {str(a)[2:]}" for a, m in periodos]
+    return inicios, etiquetas, fin
+
+
+def _indice(inicios, fin, fecha):
+    """Tramo al que pertenece `fecha`, o None si cae fuera."""
+    if fecha is None or fecha < inicios[0] or fecha >= fin:
+        return None
+    return bisect_right(inicios, fecha) - 1
+
+
+def graficos(usuario, meses=6, dias=None):
+    """Series para Chart.js. Con `dias`, los tramos siguen el periodo elegido en Reportes."""
+    if dias:
+        inicios, etiquetas, fin = cubetas(dias)
+    else:
+        periodos = _meses_atras(meses)
+        inicios = [datetime(a, m, 1) for a, m in periodos]
+        etiquetas = [f"{MESES[m - 1]} {str(a)[2:]}" for a, m in periodos]
+        fin = datetime.combine(date.today() + timedelta(days=1), datetime.min.time())
+    n = len(inicios)
+    desde = inicios[0]
+
+    recibidos, entregados, prendas = [0] * n, [0] * n, [0] * n
+    ingresos, ganancias = [0.0] * n, [0.0] * n
     for p in Pedido.query.filter(Pedido.creado_en >= desde).all():
-        i = indice.get((p.creado_en.year, p.creado_en.month))
+        i = _indice(inicios, fin, p.creado_en)
         if i is None:
             continue
         recibidos[i] += 1
@@ -339,32 +378,33 @@ def graficos(usuario, meses=6):
             ingresos[i] += float(p.ingreso)
             ganancias[i] += float(p.ganancia_estimada or 0)
     for e in EventoRastreo.query.filter(EventoRastreo.estado == "Entregado", EventoRastreo.fecha >= desde).all():
-        i = indice.get((e.fecha.year, e.fecha.month))
+        i = _indice(inicios, fin, e.fecha)
         if i is not None:
             entregados[i] += 1
 
-    # Consumo de tela (salidas) por mes: las 4 telas más usadas + total
-    consumo = defaultdict(lambda: [0.0] * meses)
+    # Consumo de tela (salidas) por tramo: las 4 telas más usadas + total
+    consumo = defaultdict(lambda: [0.0] * n)
     totales = defaultdict(float)
+    colores_tela = {}
     movs = (Movimiento.query.join(Insumo).filter(Movimiento.tipo == "salida", Movimiento.fecha >= desde,
                                                   Insumo.categoria == "Tela").all())
     for m in movs:
-        i = indice.get((m.fecha.year, m.fecha.month))
+        i = _indice(inicios, fin, m.fecha)
         if i is None:
             continue
         valor = float(m.cantidad or 0)
         consumo[m.insumo.nombre][i] += valor
         totales[m.insumo.nombre] += valor
+        colores_tela[m.insumo.nombre] = m.insumo.color_hex or "#888888"
     top = sorted(totales, key=totales.get, reverse=True)[:4]
-    total_mes = [round(sum(consumo[n][i] for n in consumo), 2) for i in range(meses)]
-    colores = {n: (Insumo.query.filter_by(nombre=n).first().color_hex or "#888888") for n in top}
+    total_tramo = [round(sum(consumo[nombre][i] for nombre in consumo), 2) for i in range(n)]
 
     datos = {
         "etiquetas": etiquetas,
         "pedidos": {"recibidos": recibidos, "entregados": entregados, "prendas": prendas},
-        "consumo": {"series": [{"nombre": n, "color": colores[n], "valores": [round(v, 2) for v in consumo[n]]}
-                               for n in top],
-                    "total": total_mes},
+        "consumo": {"series": [{"nombre": t, "color": colores_tela[t], "valores": [round(v, 2) for v in consumo[t]]}
+                               for t in top],
+                    "total": total_tramo},
     }
     if usuario.puede_ver_costos:
         datos["finanzas"] = {"ingresos": [round(v, 2) for v in ingresos],

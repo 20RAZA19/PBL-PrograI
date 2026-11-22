@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import paginacion %}
 {% block title %}Catálogo de Diseños{% endblock %}
 
 {% block content %}
@@ -46,6 +47,7 @@
 <div class="catalogo-grid">
     {% for d in disenos %}{% include "catalogo/_card.html" %}{% endfor %}
 </div>
+<div class="panel panel--paginacion">{{ paginacion(pagina, "diseños") }}</div>
 {% else %}
 <div class="panel">
     <div class="vacio">

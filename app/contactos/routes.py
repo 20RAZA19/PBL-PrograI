@@ -7,6 +7,7 @@ from app.extensions import db
 from app.models import Cliente, Proveedor, NotaContacto, Pedido
 from app.decorators import roles_required
 from app.contactos.forms import ClienteForm, ProveedorForm, NotaForm
+from app.utils import paginar
 
 contactos = Blueprint("contactos", __name__)
 
@@ -39,10 +40,14 @@ def lista():
         if modelo is Proveedor:
             filtros.append(Proveedor.rubro.ilike(f"%{q}%"))
         query = query.filter(or_(*filtros))
-    registros = query.order_by(modelo.nombre).all()
+    pagina = paginar(query, por_defecto=10, ordenes={
+        "nombre": ("Nombre A→Z", [modelo.nombre]),
+        "nombre_desc": ("Nombre Z→A", [modelo.nombre.desc()]),
+    })
+    registros = pagina.items
 
     totales = {"clientes": Cliente.query.count(), "proveedores": Proveedor.query.count()}
-    return render_template("contactos/lista.html", registros=registros, tab=tab, q=q, totales=totales)
+    return render_template("contactos/lista.html", registros=registros, pagina=pagina, tab=tab, q=q, totales=totales)
 
 
 @contactos.route("/<tipo>/nuevo", methods=["GET", "POST"])

@@ -5,7 +5,7 @@
     const nodo = document.getElementById('datos-graficos');
     if (!nodo) return;
     const datos = JSON.parse(nodo.textContent);
-    const lienzos = ['grafico-pedidos', 'grafico-consumo', 'grafico-finanzas']
+    const lienzos = ['grafico-pedidos', 'grafico-prendas', 'grafico-consumo', 'grafico-finanzas']
         .map((id) => document.getElementById(id)).filter(Boolean);
 
     // Sin conexión a internet no carga la librería: se muestra un aviso con los datos en texto
@@ -71,47 +71,62 @@
     function dibujar() {
         graficos.forEach((g) => g.destroy());
         graficos = [];
-        const primario = color('--c-poly', '#2D5128');
-        const secundario = color('--c-asparagus', '#8DA750');
-        const acento = '#d9922e';
+        const primario = color('--serie-1', '#2f7a26');
+        const secundario = color('--serie-2', '#2a78d6');
+        const acento = color('--serie-3', '#eb6834');
+        const superficie = color('--bg-panel', '#ffffff');
+        const tramo = datos.etiquetas.length;
 
-        // 1. Pedidos por mes: barras (recibidos / entregados) + línea (prendas, eje derecho)
+        // 1. Pedidos recibidos y entregados (un solo eje: las prendas van en su propio gráfico)
         const cPed = document.getElementById('grafico-pedidos');
         if (cPed) {
             const op = base();
             op.scales.y.title = { display: true, text: 'Pedidos' };
-            op.scales.y2 = { position: 'right', beginAtZero: true, grid: { display: false }, border: { display: false },
-                             title: { display: true, text: 'Prendas' }, ticks: { callback: (v) => numero.format(v) } };
             graficos.push(new Chart(cPed, {
                 type: 'bar',
                 data: {
                     labels: datos.etiquetas,
                     datasets: [
-                        { type: 'bar', label: 'Recibidos', data: datos.pedidos.recibidos, backgroundColor: primario,
-                          borderRadius: 6, maxBarThickness: 34, order: 2 },
-                        { type: 'bar', label: 'Entregados', data: datos.pedidos.entregados, backgroundColor: secundario,
-                          borderRadius: 6, maxBarThickness: 34, order: 2 },
-                        { type: 'line', label: 'Prendas recibidas', data: datos.pedidos.prendas, yAxisID: 'y2',
-                          borderColor: acento, backgroundColor: acento, tension: 0.35, pointRadius: 4, order: 1 },
+                        { label: 'Recibidos', data: datos.pedidos.recibidos, backgroundColor: primario,
+                          borderRadius: 4, maxBarThickness: 26 },
+                        { label: 'Entregados', data: datos.pedidos.entregados, backgroundColor: secundario,
+                          borderRadius: 4, maxBarThickness: 26 },
                     ],
                 },
                 options: op,
             }));
         }
 
-        // 2. Consumo de telas: una línea por tela (con su color) + total punteado
+        // 1b. Prendas recibidas
+        const cPre = document.getElementById('grafico-prendas');
+        if (cPre) {
+            const op = base();
+            op.plugins.legend.display = false;
+            op.plugins.tooltip.callbacks = { label: (c) => ` Prendas: ${numero.format(c.parsed.y)}` };
+            graficos.push(new Chart(cPre, {
+                type: 'line',
+                data: { labels: datos.etiquetas, datasets: [{
+                    label: 'Prendas recibidas', data: datos.pedidos.prendas, borderColor: primario,
+                    backgroundColor: conAlfa(primario, 0.08), fill: 'origin', borderWidth: 2, tension: 0.3,
+                    pointRadius: tramo > 16 ? 0 : 4, pointBorderColor: superficie, pointBorderWidth: 2 }] },
+                options: op,
+            }));
+        }
+
+        // 2. Consumo de telas: una línea por tela (colores de serie en orden fijo) + total punteado
         const cCon = document.getElementById('grafico-consumo');
         if (cCon) {
             const op = base();
             op.scales.y.ticks = { callback: (v) => numero.format(v) + ' m' };
             op.plugins.tooltip.callbacks = { label: (c) => ` ${c.dataset.label}: ${numero.format(c.parsed.y)} m` };
-            const series = datos.consumo.series.map((s) => ({
-                type: 'line', label: s.nombre, data: s.valores, borderColor: visible(s.color),
-                backgroundColor: visible(s.color), tension: 0.35, pointRadius: 3, borderWidth: 2.5,
+            const series = datos.consumo.series.map((s, i) => ({
+                type: 'line', label: s.nombre, data: s.valores, borderColor: color('--serie-' + (i + 1), '#888'),
+                backgroundColor: color('--serie-' + (i + 1), '#888'), tension: 0.3, pointRadius: tramo > 16 ? 0 : 3,
+                borderWidth: 2,
             }));
             series.push({ type: 'line', label: 'Total telas', data: datos.consumo.total,
                           borderColor: color('--text-muted', '#64748b'), borderDash: [6, 6], pointRadius: 0,
-                          borderWidth: 2, fill: { target: 'origin', above: conAlfa(primario, 0.06) }, tension: 0.35 });
+                          borderWidth: 2, tension: 0.3 });
             graficos.push(new Chart(cCon, { type: 'line', data: { labels: datos.etiquetas, datasets: series }, options: op }));
         }
 
@@ -127,9 +142,10 @@
                     labels: datos.etiquetas,
                     datasets: [
                         { type: 'bar', label: 'Ventas (pedidos recibidos)', data: datos.finanzas.ingresos,
-                          backgroundColor: conAlfa(primario, 0.85), borderRadius: 6, maxBarThickness: 42, order: 2 },
+                          backgroundColor: primario, borderRadius: 4, maxBarThickness: 34, order: 2 },
                         { type: 'line', label: 'Ganancia estimada', data: datos.finanzas.ganancias,
-                          borderColor: acento, backgroundColor: acento, tension: 0.35, pointRadius: 4, order: 1 },
+                          borderColor: acento, backgroundColor: acento, tension: 0.3, borderWidth: 2,
+                          pointRadius: tramo > 16 ? 0 : 4, pointBorderColor: superficie, pointBorderWidth: 2, order: 1 },
                     ],
                 },
                 options: op,

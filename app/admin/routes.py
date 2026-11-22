@@ -3,9 +3,9 @@ from flask_login import login_required, current_user
 from sqlalchemy import or_
 
 from app.extensions import db
-from app.models import Usuario, Cliente, ROLES, ESTADOS_PERMISO
+from app.models import Usuario, Cliente, ROLES, ESTADOS_PERMISO, telefonos_duplicados
 from app.decorators import roles_required
-from app.utils import fila_csv, volver_a
+from app.utils import fila_csv, paginar, volver_a
 from app.forms import UsuarioAdminForm, AccionForm
 
 admin = Blueprint("admin", __name__)
@@ -26,8 +26,7 @@ def usuarios():
     q = request.args.get("q", "").strip()
     rol = request.args.get("rol", "")
 
-    pendientes = (Usuario.query.filter_by(estado_permiso="pendiente")
-                  .order_by(Usuario.creado_en.desc()).all())
+    pendientes = Usuario.query.filter_by(estado_permiso="pendiente").count()
 
     query = Usuario.query
     if vista == "pendientes":
@@ -38,16 +37,17 @@ def usuarios():
                                  Usuario.cargo.ilike(f"%{q}%")))
     if rol in ROLES:
         query = query.filter_by(rol=rol)
-    lista_usuarios = query.order_by(Usuario.creado_en.desc()).all()
+    pagina = paginar(query.order_by(Usuario.creado_en.desc()))
+    lista_usuarios = pagina.items
 
     stats = {
         "total": Usuario.query.count(),
-        "pendientes": len(pendientes),
+        "pendientes": pendientes,
         "activos": Usuario.query.filter_by(activo=True, estado_permiso="aprobado").count(),
         "por_rol": {r: Usuario.query.filter_by(rol=r).count() for r in ROLES},
     }
-    return render_template("admin/usuarios.html", usuarios=lista_usuarios, vista=vista,
-                           q=q, rol=rol, stats=stats, ROLES=ROLES,
+    return render_template("admin/usuarios.html", usuarios=lista_usuarios, pagina=pagina, vista=vista,
+                           q=q, rol=rol, stats=stats, ROLES=ROLES, duplicados=telefonos_duplicados(),
                            ESTADOS_PERMISO=ESTADOS_PERMISO, accion_form=AccionForm())
 
 
@@ -179,7 +179,7 @@ def bitacora():
     from app.models import Auditoria
 
     query, filtros = _consulta_bitacora()
-    pagina = query.paginate(page=request.args.get("pagina", 1, type=int), per_page=40, error_out=False)
+    pagina = paginar(query, por_defecto=50)
     entidades = [e for (e,) in db.session.query(Auditoria.entidad).distinct().order_by(Auditoria.entidad)]
     usuarios_lista = Usuario.query.filter(Usuario.rol != "cliente").order_by(Usuario.nombre).all()
     retencion = {"dias": current_app.config.get("AUDITORIA_RETENCION_DIAS", 90),
@@ -187,7 +187,37 @@ def bitacora():
                  "respaldos": listar_respaldos()}
     return render_template("admin/bitacora.html", pagina=pagina, filtros=filtros, entidades=entidades,
                            usuarios=usuarios_lista, acciones=ACCIONES, retencion=retencion,
-                           accion_form=AccionForm())
+                           accion_form=AccionForm(), actividad=_actividad_bitacora())
+
+
+def _actividad_bitacora(dias=14):
+    """Registros por día (últimos 14 días) y los módulos con más cambios, para los gráficos."""
+    from collections import Counter
+    from datetime import date, datetime, timedelta
+    from app.models import Auditoria
+    hoy = date.today()
+    desde = datetime.combine(hoy - timedelta(days=dias - 1), datetime.min.time())
+    por_modulo, cambios, sesiones = Counter(), Counter(), Counter()
+    filas = (db.session.query(Auditoria.fecha, Auditoria.accion, Auditoria.entidad)
+             .filter(Auditoria.fecha >= desde).all())
+    for fecha, accion, entidad in filas:
+        if accion in ("sesion", "consulta", "whatsapp", "recuperacion"):
+            sesiones[fecha.date()] += 1
+        else:
+            cambios[fecha.date()] += 1
+            por_modulo[entidad] += 1
+    dias_lista = [hoy - timedelta(days=d) for d in range(dias - 1, -1, -1)]
+    meses = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+    top = por_modulo.most_common(6)
+    return {
+        "total": len(filas),
+        "diario": {"tipo": "barras", "apilado": True, "unidad": "registros",
+                   "etiquetas": [f"{d.day} {meses[d.month - 1]}" for d in dias_lista],
+                   "series": [{"nombre": "Cambios (crear, editar, eliminar)", "valores": [cambios[d] for d in dias_lista]},
+                              {"nombre": "Accesos y consultas", "valores": [sesiones[d] for d in dias_lista]}]},
+        "modulos": {"tipo": "barras-h", "unidad": "cambios", "etiquetas": [e for e, _ in top],
+                    "series": [{"nombre": "Cambios", "valores": [n for _, n in top]}]},
+    }
 
 
 @admin.route("/bitacora.csv")
@@ -254,3 +284,37 @@ def bitacora_respaldo_eliminar(nombre):
     db.session.commit()
     flash("Respaldo eliminado del servidor.", "info")
     return redirect(url_for("admin.bitacora"))
+
+
+# ---------------------------------------------------------------------------
+# Diagnóstico del correo: muestra la configuración y envía un correo de prueba
+# con el error real de Gmail si falla. Sirve para saber por qué no llega la
+# recuperación de contraseña.
+# ---------------------------------------------------------------------------
+@admin.route("/correo", methods=["GET", "POST"])
+@login_required
+@roles_required("admin")
+def correo():
+    from app.auditoria import registrar_accion
+    from app.correo import correo_de_prueba, estado_configuracion
+    from app.models import Auditoria
+
+    resultado = None
+    destino = (request.form.get("destino") or current_user.email or "").strip()
+    if request.method == "POST":
+        if not AccionForm().validate_on_submit():
+            abort(400)
+        if "@" not in destino or len(destino) > 120:
+            flash("Escribe un correo válido para la prueba.", "danger")
+        else:
+            enviado, motivo = correo_de_prueba(destino)
+            resultado = {"enviado": enviado, "motivo": motivo, "destino": destino}
+            registrar_accion("recuperacion", "Acceso",
+                             (f"Prueba de correo enviada a «{destino}»" if enviado
+                              else f"Prueba de correo fallida: {motivo}")[:300], usuario=current_user)
+            db.session.commit()
+
+    recientes = (Auditoria.query.filter(Auditoria.accion == "recuperacion")
+                 .order_by(Auditoria.fecha.desc()).limit(12).all())
+    return render_template("admin/correo.html", estado=estado_configuracion(), resultado=resultado,
+                           destino=destino, recientes=recientes, accion_form=AccionForm())

@@ -2,7 +2,13 @@
 {% from "_macros.html" import boton_accion, badge_pedido, badge_entrega %}
 {% block title %}Tablero de Producción{% endblock %}
 
-{# Texto corto del tiempo restante para la tarjeta compacta #}
+{% block head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+{% endblock %}
+
+{# Texto corto del tiempo restante para la tarjeta #}
 {% macro tiempo(p) -%}
 {%- if p.entregado -%}Entregado
 {%- elif p.dias_restantes is none -%}Sin fecha
@@ -12,50 +18,102 @@
 {%- else -%}{{ p.dias_restantes }} días{%- endif -%}
 {%- endmacro %}
 
-{% macro urgencia(p) -%}
-{%- if p.entregado -%}ok{%- elif p.alerta_entrega == "vencido" -%}vencido{%- elif p.alerta_entrega == "pronto" -%}pronto{%- else -%}normal{%- endif -%}
+{# Enlace a la misma vista cambiando solo el plazo, conservando los demás filtros #}
+{% macro enlace_plazo(valor) -%}
+{{ url_for('main.kanban_pedidos', q=q or None, cliente=cliente_id or None, prioridad=prioridad or None,
+           responsable=responsable_id or None, plazo=valor or None) }}
 {%- endmacro %}
 
 {% block content %}
-<div class="page-head">
-    <div>
+<div class="tp">
+<header class="tp-cabecera">
+    <div class="tp-titulo">
+        <p class="tp-eyebrow">Producción</p>
         <h1>Tablero de Producción</h1>
-        <p>Toca un pedido para ver su información completa{% if current_user.puede_mover_pedidos %} y moverlo de fase. Cada cambio queda registrado en el rastreo del cliente{% else %}. El cambio de fase lo realiza el Encargado de Taller{% endif %}.</p>
-    </div>
-</div>
-
-<div class="topbar">
-    <form class="search" method="get">
-        <i data-lucide="search"></i>
-        <input type="text" name="q" value="{{ q }}" placeholder="Buscar por folio, cliente o prenda...">
-    </form>
-    <div class="kanban-leyenda" aria-label="Leyenda de urgencia">
-        <span><i class="punto punto--vencido"></i>Vencido</span>
-        <span><i class="punto punto--pronto"></i>≤ 3 días</span>
-        <span><i class="punto punto--normal"></i>A tiempo</span>
+        <p class="tp-sub">Toca un pedido para ver su detalle{% if current_user.puede_mover_pedidos %} y avanzarlo de fase. Cada movimiento queda registrado en el rastreo del cliente{% else %}. El cambio de fase lo realiza el Encargado de Taller{% endif %}.</p>
     </div>
     {% if current_user.puede_atender_solicitudes %}
-    <a href="{{ url_for('solicitudes.lista', estado='enviada') }}" class="btn btn--primary">
+    <a href="{{ url_for('solicitudes.lista', estado='enviada') }}" class="tp-boton tp-boton--ink">
         <i data-lucide="clipboard-check"></i> Aprobaciones pendientes
     </a>
     {% endif %}
-</div>
+</header>
 
-<div class="kanban-board">
+<form class="tp-filtros" method="get" aria-label="Filtrar pedidos">
+    {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+    {% if plazo %}<input type="hidden" name="plazo" value="{{ plazo }}">{% endif %}
+    <label class="tp-campo">
+        <span>Cliente</span>
+        <select name="cliente" onchange="this.form.submit()">
+            <option value="">Todos los clientes</option>
+            {% for c in clientes %}<option value="{{ c.id }}" {% if c.id == cliente_id %}selected{% endif %}>{{ c.nombre }}</option>{% endfor %}
+        </select>
+    </label>
+    <label class="tp-campo">
+        <span>Prioridad</span>
+        <select name="prioridad" onchange="this.form.submit()">
+            <option value="">Cualquiera</option>
+            <option value="alta" {% if prioridad == 'alta' %}selected{% endif %}>Alta (vencido)</option>
+            <option value="media" {% if prioridad == 'media' %}selected{% endif %}>Media (≤ 3 días)</option>
+            <option value="normal" {% if prioridad == 'normal' %}selected{% endif %}>Normal</option>
+        </select>
+    </label>
+    <label class="tp-campo">
+        <span>Responsable</span>
+        <select name="responsable" onchange="this.form.submit()">
+            <option value="">Cualquiera</option>
+            {% for u in responsables %}<option value="{{ u.id }}" {% if u.id == responsable_id %}selected{% endif %}>{{ u.nombre }}</option>{% endfor %}
+        </select>
+    </label>
+    {% if q or cliente_id or prioridad or responsable_id or plazo %}
+    <a class="tp-limpiar" href="{{ url_for('main.kanban_pedidos') }}">Limpiar filtros</a>
+    {% endif %}
+</form>
+
+<nav class="tp-pastillas" aria-label="Filtro rápido por plazo">
+    <a href="{{ enlace_plazo('') }}" class="tp-pastilla {{ 'is-on' if not plazo }}">Todos <b>{{ conteos.todos }}</b></a>
+    <a href="{{ enlace_plazo('vencido') }}" class="tp-pastilla tp-pastilla--vencido {{ 'is-on' if plazo == 'vencido' }}">Vencido <b>{{ conteos.vencido }}</b></a>
+    <a href="{{ enlace_plazo('pronto') }}" class="tp-pastilla tp-pastilla--pronto {{ 'is-on' if plazo == 'pronto' }}">Por vencer (≤ 3 días) <b>{{ conteos.pronto }}</b></a>
+    <a href="{{ enlace_plazo('tiempo') }}" class="tp-pastilla tp-pastilla--ok {{ 'is-on' if plazo == 'tiempo' }}">A tiempo <b>{{ conteos.tiempo }}</b></a>
+</nav>
+
+<div class="tp-tablero">
     {% for estado in estados %}
     {% set fase = FASES[loop.index0] %}
     {% set columna = pedidos | selectattr("estado", "equalto", estado) | list %}
-    <div class="kanban-column">
-        <h3><i data-lucide="{{ fase.icono }}"></i> {{ estado }} <span class="contador">{{ columna | length }}</span></h3>
+    {% set unidades = columna | sum(attribute='cantidad') %}
+    <section class="tp-columna" aria-label="{{ estado }}">
+        <header class="tp-columna__cabecera">
+            <div class="tp-columna__titulo">
+                <i data-lucide="{{ fase.icono }}"></i>
+                <h2>{{ estado | upper }}</h2>
+                <span class="tp-badge">{{ columna | length }}</span>
+            </div>
+            <p class="tp-columna__sub">{{ "{:,}".format(unidades) }} prenda{{ 's' if unidades != 1 }}</p>
+        </header>
+
+        <div class="tp-columna__cuerpo">
         {% for pedido in columna %}
-        {# Sin JavaScript el enlace lleva a la página de rastreo con toda la información #}
-        <a class="kcard kcard--{{ urgencia(pedido) }}" href="{{ url_for('rastreo.detalle', folio=pedido.folio) }}"
+        {% set plazo_p = plazo_de(pedido) %}
+        {% set resp = responsable_de(pedido) %}
+        {% set prio = prioridad_de(pedido) %}
+        {# Sin JavaScript el enlace lleva al rastreo completo #}
+        <a class="kcard kcard--{{ 'ok' if plazo_p == 'entregado' else plazo_p if plazo_p in ('vencido', 'pronto') else 'normal' }}"
+           href="{{ url_for('rastreo.detalle', folio=pedido.folio) }}"
            data-detalle="det-{{ pedido.id }}" aria-haspopup="dialog">
             <span class="kcard__top">
                 <span class="kcard__folio">{{ pedido.folio }}</span>
                 <span class="kcard__tiempo"><i data-lucide="{{ 'circle-check' if pedido.entregado else 'clock' }}"></i>{{ tiempo(pedido) }}</span>
             </span>
             <span class="kcard__cliente" title="{{ pedido.cliente.nombre }}">{{ pedido.cliente.nombre }}</span>
+            <span class="kcard__desc">{{ "{:,}".format(pedido.cantidad) }} {{ pedido.modelo_prenda }} · Entrega {{ pedido.fecha_limite | fecha_es }}</span>
+            <span class="kcard__pie">
+                <span class="kcard__avatar" title="{{ resp.nombre if resp else 'Sin movimientos aún' }}">{{ resp.iniciales if resp else '—' }}</span>
+                <span class="kcard__resp">{{ resp.nombre if resp else 'Sin asignar' }}</span>
+                {% if prio == 'alta' %}<span class="kcard__prio kcard__prio--alta" title="Prioridad alta">Alta</span>
+                {% elif prio == 'media' %}<span class="kcard__prio kcard__prio--media" title="Prioridad media">Media</span>{% endif %}
+                {% if pedido.prendas_con_defecto %}<span class="kcard__alerta" title="{{ pedido.prendas_con_defecto }} prendas con defecto"><i data-lucide="triangle-alert"></i>{{ pedido.prendas_con_defecto }}</span>{% endif %}
+            </span>
         </a>
 
         <template id="det-{{ pedido.id }}">
@@ -63,7 +121,7 @@
                 <div>
                     <p class="kmodal__eyebrow">{{ pedido.cliente.nombre }}</p>
                     <h2 id="kmodal-titulo">{{ pedido.folio }}</h2>
-                    <div class="flex" style="gap: 6px; flex-wrap: wrap; margin-top: 6px;">{{ badge_pedido(pedido) }} {{ badge_entrega(pedido) }}</div>
+                    <div class="flex" style="gap: 6px; flex-wrap: wrap; margin-top: 8px;">{{ badge_pedido(pedido) }} {{ badge_entrega(pedido) }}</div>
                 </div>
                 <button type="button" class="btn-icono kmodal__cerrar" data-cerrar aria-label="Cerrar"><i data-lucide="x"></i></button>
             </header>
@@ -82,6 +140,7 @@
                     {% if pedido.tallas %}<div><dt>Tallas</dt><dd>{{ pedido.tallas }}</dd></div>{% endif %}
                     {% if pedido.colores %}<div><dt>Colores</dt><dd>{{ pedido.colores }}</dd></div>{% endif %}
                     <div><dt>Ubicación</dt><dd>{{ pedido.ubicacion_actual or "—" }}</dd></div>
+                    <div><dt>Responsable</dt><dd>{{ resp.nombre if resp else "Sin asignar" }}</dd></div>
                     {% if pedido.diseno %}<div><dt>Diseño</dt><dd><a href="{{ url_for('catalogo.detalle', diseno_id=pedido.diseno.id) }}">{{ pedido.diseno.nombre }}</a></dd></div>{% endif %}
                     {% if current_user.puede_ver_costos and pedido.precio_efectivo is not none %}
                     <div><dt>Venta</dt><dd>{{ pedido.ingreso | dinero }}{% if pedido.margen_pct is not none %} · margen {{ pedido.margen_pct }}%{% endif %}</dd></div>
@@ -93,12 +152,21 @@
                 <div class="kmodal__nota"><strong>Observaciones</strong><p>{{ pedido.observaciones }}</p></div>
                 {% endif %}
 
-                {% set ev = pedido.ultimo_evento %}
-                {% if ev %}
-                <div class="kmodal__nota">
-                    <strong>Último movimiento</strong>
-                    <p>{{ ev.estado }}{% if ev.nota %} · {{ ev.nota }}{% endif %}</p>
-                    <small class="muted">{{ ev.fecha | hace }}{% if ev.usuario %} · {{ ev.usuario.nombre }}{% endif %}</small>
+                {% if pedido.eventos %}
+                <div class="kmodal__linea">
+                    <strong>Línea de tiempo</strong>
+                    <ol class="kmodal__eventos">
+                        {% for ev in (pedido.eventos | reverse | list)[:6] %}
+                        <li>
+                            <span class="kmodal__punto"></span>
+                            <div>
+                                <div class="flex flex--between"><strong>{{ ev.estado }}</strong><small class="muted">{{ ev.fecha | hace }}</small></div>
+                                {% if ev.ubicacion %}<p>{{ ev.ubicacion }}</p>{% endif %}
+                                {% if ev.usuario %}<small class="muted">{{ ev.usuario.nombre }}</small>{% endif %}
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ol>
                 </div>
                 {% endif %}
             </div>
@@ -122,8 +190,17 @@
         {% else %}
         <div class="kanban-vacio">Sin pedidos</div>
         {% endfor %}
-    </div>
+        </div>
+
+        {% if estado == 'Entregado' %}
+        <footer class="tp-columna__pie">
+            <a href="{{ url_for('rastreo.lista', vista='todos', fase='Entregado') }}">Ver historial completo</a>
+            <span class="muted small">Solo se muestran los últimos 7 días</span>
+        </footer>
+        {% endif %}
+    </section>
     {% endfor %}
+</div>
 </div>
 
 <dialog class="kmodal" id="kmodal" aria-labelledby="kmodal-titulo"></dialog>

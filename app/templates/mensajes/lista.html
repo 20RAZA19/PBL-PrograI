@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import paginacion %}
 {% block title %}Mensajes{% endblock %}
 
 {% block content %}
@@ -46,6 +47,7 @@
         </a>
         {% endfor %}
     </div>
+    {{ paginacion(pagina, "conversaciones") }}
     {% else %}
     <div class="vacio">
         <i data-lucide="messages-square" style="width: 48px; height: 48px; opacity: 0.5; margin-bottom: 16px;"></i>

@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% from "_macros.html" import grafico %}
+{% block title %}Mis metas{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Mis metas</h1>
+        <p>Tu avance de {{ nombre_mes }} y el incentivo que te corresponde. Se calcula solo con lo que registras en el sistema.</p>
+    </div>
+    {% include "metas/_mes.html" %}
+</div>
+
+{% if evaluaciones %}
+<div class="inv-resumen">
+    <div class="inv-tarjeta {{ 'inv-tarjeta--ok' if total > 0 }}">
+        <span class="inv-tarjeta__icono"><i data-lucide="wallet"></i></span>
+        <div>
+            <strong>{{ total | dinero }}</strong>
+            <span>{% if es_actual %}ganado si el mes cerrara hoy{% else %}de incentivo en {{ nombre_mes }}{% endif %} · de {{ maximo | dinero }} posibles</span>
+        </div>
+    </div>
+    <div class="inv-tarjeta">
+        <span class="inv-tarjeta__icono"><i data-lucide="target"></i></span>
+        <div>
+            {% set cumplidas = evaluaciones | selectattr('cumplida') | list | length %}
+            <strong>{{ cumplidas }} de {{ evaluaciones | length }}</strong>
+            <span>meta{{ 's' if evaluaciones | length != 1 }} cumplida{{ 's' if evaluaciones | length != 1 }}</span>
+        </div>
+    </div>
+    <div class="inv-tarjeta">
+        <span class="inv-tarjeta__icono"><i data-lucide="{{ 'calendar-clock' if es_actual else 'badge-check' }}"></i></span>
+        <div>
+            {% if es_actual %}
+            <strong>{{ dias_restantes }} día{{ 's' if dias_restantes != 1 }}</strong><span>para que termine el mes</span>
+            {% else %}
+            {% set pagos = evaluaciones | map(attribute='pago') | select | list %}
+            {% if not pagos %}<strong>Sin cerrar</strong><span>el administrador aún no fija los montos</span>
+            {% elif pagos | selectattr('estado', 'equalto', 'pendiente') | list %}<strong>Por pagar</strong><span>montos fijados al cerrar el mes</span>
+            {% else %}<strong>Pagado</strong><span>incentivos entregados</span>{% endif %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="metas-grid">
+    {% for ev in evaluaciones %}
+    {% set m = ev.meta %}
+    <article class="meta-card {% if ev.cumplida %}meta-card--ok{% elif ev.parcial %}meta-card--parcial{% endif %}">
+        <header>
+            <div>
+                <h2>{{ m.nombre }}</h2>
+                <p>{{ ev.info.nombre }}{% if ev.info.equipo %} · <span class="badge badge--info">Meta de equipo</span>{% endif %}</p>
+                <p class="meta-card__periodo"><i data-lucide="calendar-range"></i> {{ m.periodo_texto }}</p>
+            </div>
+            {% if ev.cumplida %}<span class="badge badge--ok"><i data-lucide="check"></i> Cumplida</span>
+            {% elif ev.parcial %}<span class="badge badge--warn">Pago parcial</span>
+            {% elif ev.sin_datos %}<span class="badge badge--neutral">Sin datos aún</span>
+            {% else %}<span class="badge badge--info">En camino</span>{% endif %}
+        </header>
+
+        <div class="meta-card__cifras">
+            <div><span>Llevas</span><strong>{{ ev.valor_texto }}</strong></div>
+            <div><span>{{ 'Objetivo' if ev.info.mayor_mejor else 'Máximo' }}</span><strong>{{ ev.objetivo_texto }}</strong></div>
+        </div>
+        <div class="meta-barra" role="progressbar" aria-valuenow="{{ ev.avance }}" aria-valuemin="0" aria-valuemax="100"
+             aria-label="Avance de {{ m.nombre }}">
+            <span style="width: {{ ev.avance }}%"></span>
+            {% if m.umbral_parcial %}<i class="meta-barra__marca" style="left: {{ m.umbral_parcial }}%" title="Desde aquí: medio incentivo"></i>{% endif %}
+        </div>
+        <p class="meta-card__estado">
+            {% if ev.cumplida %}¡Lo lograste!
+            {% elif ev.por_empezar %}Empieza a contar el {{ m.fecha_inicio.strftime('%d/%m/%Y') }}.
+            {% elif ev.sin_datos %}Todavía no hay movimientos en el periodo para medirla.
+            {% elif ev.info.mayor_mejor %}Te faltan <strong>{{ ev.falta }}</strong> para cumplirla.
+            {% else %}Estás <strong>{{ ev.falta }}</strong> por encima del máximo.{% endif %}
+            {{ ev.avance }} % de avance.
+        </p>
+
+        <footer>
+            <div>
+                <span>Incentivo</span>
+                <strong>{{ (ev.pago.monto if ev.pago else ev.ganado) | dinero }}</strong>
+                <small>de {{ ev.incentivo | dinero }}{% if m.umbral_parcial %} · mitad desde {{ m.umbral_parcial }} %{% endif %}
+                {% if not ev.liquida_aqui %} · se paga al cerrar {{ ev.mes_liquidacion }}{% endif %}</small>
+            </div>
+            {% if ev.pago %}<span class="badge {{ 'badge--ok' if ev.pago.estado == 'pagado' else 'badge--warn' }}">{{ ev.pago.estado_legible }}</span>{% endif %}
+        </footer>
+        <details class="meta-card__como">
+            <summary>¿Cómo se mide?</summary>
+            <p>{{ ev.info.descripcion }}</p>
+            {% if m.descripcion %}<p><strong>Nota:</strong> {{ m.descripcion }}</p>{% endif %}
+        </details>
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<div class="panel">
+    <div class="vacio" style="padding: 56px 24px;">
+        <i data-lucide="target" style="width: 48px; height: 48px; opacity: 0.5; margin-bottom: 16px;"></i>
+        <p>Aún no tienes metas asignadas{% if not es_actual %} para {{ nombre_mes }}{% endif %}.</p>
+        <p class="small" style="margin-top: 6px;">
+            {% if current_user.rol == 'admin' %}Defínelas en <a href="{{ url_for('metas.equipo') }}" style="color: var(--primary); font-weight: 600;">Metas e incentivos</a>.
+            {% else %}El administrador las define y aquí verás tu avance cada día.{% endif %}
+        </p>
+    </div>
+</div>
+{% endif %}
+
+{% if historial %}
+<section class="panel" style="margin-top: 24px;">
+    <div class="panel__head"><div><h2>Historial de incentivos</h2><p>Meses cerrados por el administrador</p></div></div>
+    {% if historial | length > 1 %}
+    {% set hist = historial | reverse | list %}
+    <div class="panel__body">
+        {{ grafico('grafico-historial', {'tipo': 'barras', 'moneda': True,
+                   'etiquetas': hist | map(attribute='nombre') | map('capitalize') | list,
+                   'series': [{'nombre': 'Incentivo', 'valores': hist | map(attribute='monto') | map('float') | list}]},
+                   'Incentivo por mes', 220, tabla=False) }}
+    </div>
+    {% endif %}
+    <div class="tabla-wrap">
+        <table>
+            <thead><tr><th>Mes</th><th>Metas cumplidas</th><th class="num">Incentivo</th><th>Estado</th></tr></thead>
+            <tbody>
+                {% for h in historial %}
+                <tr>
+                    <td><strong>{{ h.nombre | capitalize }}</strong></td>
+                    <td>{{ h.cumplidas }} de {{ h.metas }}</td>
+                    <td class="num"><strong>{{ h.monto | dinero }}</strong></td>
+                    <td><span class="badge {{ 'badge--ok' if h.pagado else 'badge--warn' }}">{{ 'Pagado' if h.pagado else 'Por pagar' }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+{% endblock %}

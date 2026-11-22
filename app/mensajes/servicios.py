@@ -33,11 +33,12 @@ def purgar_conversaciones(dias=None):
 
 
 def conversaciones_de(usuario):
-    """Bandeja según el rol: el cliente ve las de su empresa; Ventas y Admin, todas."""
+    """Bandeja según el rol (consulta sin ejecutar, para paginarla): el cliente ve las
+    de su empresa; Ventas y Admin, todas."""
     q = Conversacion.query.options(selectinload(Conversacion.mensajes), selectinload(Conversacion.cliente))
     if usuario.rol == "cliente":
         q = q.filter_by(cliente_id=usuario.cliente_id)
-    return q.order_by(Conversacion.ultima_actividad.desc()).all()
+    return q
 
 
 def sin_leer_total(usuario):

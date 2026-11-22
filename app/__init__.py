@@ -6,9 +6,23 @@ from app.extensions import db, migrate, login_manager, csrf
 MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
          "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 
+def _fijar_zona_horaria(zona):
+    """Hace que datetime.now() devuelva la hora local del negocio y no la del servidor.
+
+    PythonAnywhere corre en UTC: sin esto el saludo, las horas de los movimientos y
+    los plazos se calculan con 6 horas de adelanto respecto a El Salvador. En Windows
+    (desarrollo local) tzset no existe y la hora ya es la del equipo.
+    """
+    import time
+    if zona and hasattr(time, "tzset"):
+        os.environ["TZ"] = zona
+        time.tzset()
+
+
 def create_app(config_class=Config):
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config_class)
+    _fijar_zona_horaria(app.config.get("ZONA_HORARIA"))
 
     if app.config.get("DETRAS_DE_PROXY"):
         # El proxy agrega la IP real y el protocolo (https) en las cabeceras X-Forwarded-*
@@ -89,6 +103,9 @@ def create_app(config_class=Config):
     from app.mensajes.routes import mensajes
     app.register_blueprint(mensajes, url_prefix="/mensajes")
 
+    from app.metas.routes import metas
+    app.register_blueprint(metas, url_prefix="/metas")
+
     from app.auditoria import activar_auditoria
     activar_auditoria()
 
@@ -99,6 +116,13 @@ def create_app(config_class=Config):
     app.cli.add_command(demo)
     app.cli.add_command(crear_admin)
     app.cli.add_command(claves_demo)
+
+    @app.template_filter("nivel_margen")
+    def nivel_margen(margen, minimo, meta):
+        """Color de estado para un margen: rojo bajo el mínimo, ámbar bajo la meta, verde en meta."""
+        if margen is None:
+            return "neutral"
+        return "danger" if margen < minimo else ("warn" if margen < meta else "ok")
 
     @app.template_filter("fecha_es")
     def fecha_es(fecha):

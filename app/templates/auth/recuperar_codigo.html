@@ -27,12 +27,45 @@
                 </button>
             </div>
         </form>
+        <form method="post" action="{{ url_for('auth.recuperar_reenviar') }}" class="reenviar" novalidate>
+            {{ reenviar_form.hidden_tag() }}
+            <input type="hidden" name="email" value="{{ reenviar_form.email.data or '' }}" id="reenviar-email">
+            <p>¿No te llegó en un par de minutos? Revisa spam y promociones, o</p>
+            <button type="submit" class="btn btn--outline btn--sm" id="btn-reenviar" data-espera="{{ espera }}"
+                    {% if espera %}disabled{% endif %}>
+                <i data-lucide="mail-plus"></i> <span>Reenviar código{% if espera %} en {{ espera }} s{% endif %}</span>
+            </button>
+            <small>El código anterior deja de servir cuando llega uno nuevo.</small>
+        </form>
         <div style="text-align: center; font-size: 14px; color: var(--text-muted);">
-            ¿No te llegó? <a href="{{ url_for('auth.recuperar') }}" style="color: var(--primary); font-weight: 600;">Pide otro código</a>
+            ¿Escribiste mal tu correo? <a href="{{ url_for('auth.recuperar') }}" style="color: var(--primary); font-weight: 600;">Empieza de nuevo</a>
         </div>
         <div style="text-align: center; margin-top: 10px; font-size: 14px; padding-bottom: 24px; color: var(--text-muted);">
             <a href="{{ url_for('auth.login') }}" style="color: var(--primary); font-weight: 600;">Volver a iniciar sesión</a>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    /* Cuenta regresiva del botón de reenvío y uso del correo escrito arriba. */
+    (function () {
+        const boton = document.getElementById('btn-reenviar');
+        if (!boton) return;
+        const texto = boton.querySelector('span');
+        let restante = parseInt(boton.dataset.espera || '0', 10);
+        function pintar() {
+            boton.disabled = restante > 0;
+            texto.textContent = restante > 0 ? 'Reenviar código en ' + restante + ' s' : 'Reenviar código';
+        }
+        pintar();
+        if (restante > 0) {
+            const reloj = setInterval(() => { restante -= 1; pintar(); if (restante <= 0) clearInterval(reloj); }, 1000);
+        }
+        const correo = document.getElementById('{{ form.email.id }}');
+        const oculto = document.getElementById('reenviar-email');
+        boton.form.addEventListener('submit', () => { if (correo && correo.value) oculto.value = correo.value; });
+    })();
+</script>
 {% endblock %}

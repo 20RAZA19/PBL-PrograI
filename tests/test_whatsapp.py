@@ -152,3 +152,47 @@ def test_simulador_conversa(app, entrar, cliente_con_telefono):
     assert "ORD-T-001" in html and "wa-msg--bot" in html
     r = c.post("/whatsapp/simulador/limpiar", follow_redirects=True)
     assert "wa-msg--bot" not in r.get_data(as_text=True)
+
+
+# --- Guía para clientes -----------------------------------------------------------
+def test_guia_solo_para_clientes(entrar):
+    r = entrar("cliente").get("/whatsapp/guia")
+    assert r.status_code == 200 and "Qué puedes pedir" in r.get_data(as_text=True)
+    for rol in ("ventas", "gestor", "admin"):
+        assert entrar(rol).get("/whatsapp/guia").status_code == 403
+        assert "/whatsapp/guia" not in entrar(rol).get("/dashboard").get_data(as_text=True)
+
+
+def test_guia_antepone_join_al_codigo_del_sandbox(app, entrar):
+    app.config["WHATSAPP_CODIGO_UNION"] = "thought-not"
+    html = entrar("cliente").get("/whatsapp/guia").get_data(as_text=True)
+    assert "join thought-not" in html
+    app.config["WHATSAPP_CODIGO_UNION"] = "join thought-not"
+    html = entrar("cliente").get("/whatsapp/guia").get_data(as_text=True)
+    assert "join join" not in html and "join thought-not" in html
+
+
+def test_guia_revisa_el_numero_del_cliente(app, entrar, ctx):
+    html = entrar("cliente").get("/whatsapp/guia").get_data(as_text=True)
+    assert "Antes de escribir, revisa tu número" in html and "Agrega tu número de WhatsApp" in html
+    u = Usuario.query.filter_by(email="cliente@test.com").one()
+    u.telefono = TELEFONO
+    db.session.commit()
+    html = entrar("cliente").get("/whatsapp/guia").get_data(as_text=True)
+    assert "Tu número está listo" in html
+    # Respuesta real a ESTADO con sus pedidos, sin precios
+    assert "Así te respondería ahora mismo" in html and "ORD-T-001" in html and "ORD-T-002" not in html
+
+
+def test_guia_avisa_numero_repetido(app, entrar, ctx):
+    for email in ("cliente@test.com", "gestor@test.com"):
+        Usuario.query.filter_by(email=email).one().telefono = TELEFONO
+    db.session.commit()
+    html = entrar("cliente").get("/whatsapp/guia").get_data(as_text=True)
+    assert "también está en otra cuenta" in html and "Tu número está listo" not in html
+
+
+def test_guia_muestra_la_frase_de_union(app, entrar):
+    app.config.update(WHATSAPP_CODIGO_UNION="join silver-tiger", TWILIO_WHATSAPP_FROM="whatsapp:+14155238886")
+    html = entrar("cliente").get("/whatsapp/guia").get_data(as_text=True)
+    assert "join silver-tiger" in html and "wa.me/14155238886?text=join%20silver-tiger" in html

@@ -150,11 +150,11 @@ def _respuesta_dashboard(usuario):
         texto = ("«Mi Portal» resume tus pedidos activos, los que van en ruta, los entregados y tus diseños, "
                  "además de la próxima entrega con su porcentaje de avance.")
     else:
-        texto = ("El Dashboard muestra los indicadores principales (metraje disponible, insumos en alerta, "
-                 "pedidos en producción y diseños), gráficas de pedidos por fase, salud del inventario, stock "
-                 "contra mínimo y movimientos de la semana, las próximas entregas y la tabla de materia prima.")
+        texto = ("El inicio muestra «Para hoy»: cuatro números de lo que tienes que atender según tu rol (aprobaciones, "
+                 "vencidos, entregas de la semana, mensajes o insumos por reponer) y dos listas cortas con lo más urgente. "
+                 "Debajo están el Centro de Atención y los indicadores de 90 días.")
         if usuario.rol == "admin":
-            texto += " Como administrador también ves las solicitudes de acceso pendientes."
+            texto += " Las gráficas de tendencia están en «Reportes»."
     return {"texto": texto}
 
 
@@ -204,11 +204,123 @@ def _respuesta_folio(folio, usuario):
     }
 
 
+def _respuesta_token(usuario):
+    url = url_for("seguimiento.consulta")
+    base = ("El token de seguimiento te deja consultar tus pedidos sin iniciar sesión: entra a «Consulta con tu token» "
+            "en la pantalla de inicio y escribe el token junto con los últimos 4 dígitos de tu teléfono. Es solo de lectura.")
+    if usuario.rol != "cliente":
+        return {"texto": "El token de seguimiento es de cada cliente. " + base.replace("tus pedidos", "sus pedidos").replace("te deja", "le deja").replace("tu teléfono", "su teléfono"),
+                "pasos": ["Un administrador lo genera o regenera en «Gestión de Usuarios» → editar al cliente."],
+                "enlaces": [{"texto": "Consulta con token", "url": url}]}
+    if usuario.token_seguimiento:
+        tel = "".join(c for c in (usuario.telefono or "") if c.isdigit())
+        pasos = [f"Tu token es: {usuario.token_seguimiento}",
+                 f"Te pedirá los últimos 4 dígitos de tu teléfono ({'…' + tel[-4:] if len(tel) >= 4 else 'regístralo en Mi Perfil'})."]
+        return {"texto": base, "pasos": pasos,
+                "nota": "No lo compartas con personas ajenas a tu empresa. Si crees que alguien más lo tiene, pide a Arte y Color que lo regenere.",
+                "enlaces": [{"texto": "Consultar con mi token", "url": url}]}
+    return {"texto": "Todavía no tienes un token de seguimiento. " + base,
+            "pasos": ["Pídelo a Arte y Color desde «Mensajes»: un administrador lo genera para tu cuenta."],
+            "enlaces": [{"texto": "Escribir a ventas", "url": url_for("mensajes.lista")}]}
+
+
+def _respuesta_solicitudes(usuario):
+    from app.models import Solicitud
+    q = Solicitud.query
+    if usuario.rol == "cliente":
+        if not usuario.cliente_id:
+            return {"texto": "Tu cuenta aún no está vinculada a una empresa, por eso no tienes solicitudes. Pide a Arte y Color que la vincule."}
+        q = q.filter_by(cliente_id=usuario.cliente_id)
+        abiertas = q.filter(Solicitud.estado.in_(("enviada", "aprobada"))).order_by(Solicitud.creado_en.desc()).limit(5).all()
+        if not abiertas:
+            return {"texto": "No tienes solicitudes en curso. Puedes pedir prendas nuevas cuando quieras.",
+                    "enlaces": [{"texto": "Solicitar prendas", "url": url_for("solicitudes.nueva")}]}
+        return {"texto": f"Tienes {len(abiertas)} solicitud{'es' if len(abiertas) != 1 else ''} en curso:",
+                "pasos": [f"{s.folio}: {s.estado_legible}" + (f" · acéptala antes del {s.vence_en.strftime('%d/%m/%Y')}"
+                                                              if s.estado == "aprobada" and s.vence_en and not s.vencida else "")
+                          for s in abiertas],
+                "enlaces": [{"texto": s.folio, "url": url_for("solicitudes.detalle", solicitud_id=s.id)} for s in abiertas[:3]]}
+    pendientes = q.filter_by(estado="enviada").order_by(Solicitud.creado_en).limit(5).all()
+    total = q.filter_by(estado="enviada").count()
+    esperando = q.filter_by(estado="aprobada").count()
+    if not total:
+        return {"texto": f"No hay solicitudes por revisar. {esperando} cotización{'es' if esperando != 1 else ''} espera{'n' if esperando != 1 else ''} respuesta del cliente."}
+    return {"texto": f"Hay {total} solicitud{'es' if total != 1 else ''} por revisar (las más antiguas primero) y {esperando} esperando al cliente:",
+            "pasos": [f"{s.folio} · {s.cliente.nombre if s.cliente else 'Cliente'} · {s.total_prendas:,} prendas" for s in pendientes],
+            "enlaces": [{"texto": s.folio, "url": url_for("solicitudes.detalle", solicitud_id=s.id)} for s in pendientes[:3]]}
+
+
+def _respuesta_cotizaciones(usuario):
+    from app.models import Cotizacion
+    q = Cotizacion.query.filter_by(estado="enviada")
+    if usuario.rol == "cliente":
+        q = q.filter_by(cliente_id=usuario.cliente_id or 0)
+    vigentes = sorted((c for c in q.order_by(Cotizacion.fecha.desc()).limit(30) if not c.vencida),
+                      key=lambda c: c.fecha_vencimiento)[:5]
+    if not vigentes:
+        return {"texto": "No hay cotizaciones esperando respuesta." if usuario.rol != "cliente"
+                else "No tienes cotizaciones por responder."}
+    sujeto = "Tienes" if usuario.rol == "cliente" else "Hay"
+    return {"texto": f"{sujeto} {len(vigentes)} cotización{'es' if len(vigentes) != 1 else ''} por responder:",
+            "pasos": [f"{c.folio}: {float(c.total):,.2f} $ · vence el {c.fecha_vencimiento.strftime('%d/%m/%Y')}" for c in vigentes],
+            "enlaces": [{"texto": c.folio, "url": url_for("cotizaciones.detalle", cotizacion_id=c.id)} for c in vigentes[:3]]}
+
+
+def _respuesta_entrega(usuario):
+    from datetime import date
+    from app.rastreo.servicios import pedidos_visibles
+    from app.models import Pedido
+    activos = [p for p in pedidos_visibles(usuario).order_by(Pedido.fecha_limite).limit(40) if not p.entregado][:5]
+    if not activos:
+        return {"texto": "No hay pedidos pendientes de entrega."}
+    hoy = date.today()
+
+    def cuando(p):
+        d = (p.fecha_limite - hoy).days
+        return "vencido" if d < 0 else ("hoy" if d == 0 else (f"en {d} día{'s' if d != 1 else ''}"))
+    return {"texto": "Próximas entregas, de la más cercana a la más lejana:",
+            "pasos": [f"{p.folio} · {p.modelo_prenda}: {p.fecha_limite.strftime('%d/%m/%Y')} ({cuando(p)}) · va en «{p.estado}», {p.progreso} %"
+                      for p in activos],
+            "enlaces": [{"texto": p.folio, "url": url_for("rastreo.detalle", folio=p.folio)} for p in activos[:3]]}
+
+
+def _respuesta_mensajes(usuario):
+    from app.mensajes.servicios import sin_leer_total
+    n = sin_leer_total(usuario)
+    if usuario.rol == "cliente":
+        texto = "En «Mensajes» puedes escribir al equipo de ventas de Arte y Color y ver sus respuestas."
+    else:
+        texto = "En «Mensajes» respondes a los clientes. Las conversaciones se borran a los 30 días salvo que las marques como «Guardada»."
+    texto += f" Ahora tienes {n} mensaje{'s' if n != 1 else ''} sin leer." if n else " No tienes mensajes sin leer."
+    return {"texto": texto}
+
+
+def _respuesta_metas(usuario):
+    from app.metas.indicadores import evaluar, mes_actual, metas_de, monto_del_mes, nombre_mes
+    anio, mes = mes_actual()
+    evaluaciones = [evaluar(m, usuario, anio, mes) for m in metas_de(usuario, anio, mes)]
+    if not evaluaciones:
+        if usuario.rol == "admin":
+            return {"texto": "Las metas del equipo se definen en «Metas e incentivos». Ahí ves el avance de cada persona y cierras el mes.",
+                    "enlaces": [{"texto": "Metas e incentivos", "url": url_for("metas.equipo")}]}
+        return {"texto": f"No tienes metas activas en {nombre_mes(anio, mes)}. El administrador las define."}
+    total = sum(monto_del_mes(e) for e in evaluaciones)
+    return {"texto": f"En {nombre_mes(anio, mes)} llevas {sum(e['cumplida'] for e in evaluaciones)} de {len(evaluaciones)} metas cumplidas "
+                     f"y ${total:,.2f} de incentivo si el mes cerrara hoy:",
+            "pasos": [f"{e['meta'].nombre}: {e['valor_texto']} de {e['objetivo_texto']} ({e['avance']} %)" for e in evaluaciones[:5]]}
+
+
 DINAMICAS = {
     "__opciones__": _respuesta_opciones,
     "__dashboard__": _respuesta_dashboard,
     "__dato_pedidos__": _respuesta_pedidos,
     "__dato_alertas__": _respuesta_alertas,
+    "__dato_token__": _respuesta_token,
+    "__dato_solicitudes__": _respuesta_solicitudes,
+    "__dato_cotizaciones__": _respuesta_cotizaciones,
+    "__dato_entrega__": _respuesta_entrega,
+    "__dato_mensajes__": _respuesta_mensajes,
+    "__dato_metas__": _respuesta_metas,
 }
 
 
@@ -233,8 +345,8 @@ def responder(texto, usuario):
     intencion, puntaje = clasificar(texto)
     if intencion is None:
         return {
-            "texto": ("Solo puedo ayudarte con el uso de AyC Control: inventario, pedidos, rastreo, contactos, cotizaciones, compras, calidad, "
-                      "diseños y tu cuenta. ¿Puedes reformular tu pregunta? Por ejemplo:"),
+            "texto": ("Solo puedo ayudarte con el uso de AyC Control: pedidos, rastreo, solicitudes, cotizaciones, mensajes, "
+                      "inventario, compras, calidad, metas, diseños y tu cuenta (contraseña, token, WhatsApp). ¿Puedes reformular tu pregunta? Por ejemplo:"),
             "sugerencias": SUGERENCIAS_INICIALES.get(usuario.rol, SUGERENCIAS_INICIALES["cliente"]),
             "intencion": None,
         }

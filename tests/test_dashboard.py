@@ -91,18 +91,98 @@ def test_datos_de_graficos(app, ids):
     assert "finanzas" not in sin_finanzas
 
 
-def test_dashboard_muestra_centro_de_atencion_y_graficos(app, ids, entrar):
+def test_dashboard_muestra_para_hoy_y_centro_de_atencion(app, ids, entrar):
     for rol in ("admin", "gestor", "ventas"):
         html = entrar(rol).get("/dashboard").get_data(as_text=True)
-        assert "Centro de Atención" in html and 'id="grafico-pedidos"' in html
-        datos = json.loads(re.search(r'id="datos-graficos">(.*?)</script>', html, re.S).group(1))
-        assert len(datos["etiquetas"]) == 6
-        assert ('id="grafico-finanzas"' in html) == (rol != "gestor")
-    # Lo primero que ve el administrador: indicadores y centro de atención antes que el resto
+        assert "Centro de Atención" in html and 'class="hoy"' in html
+        assert len(re.findall(r'<a class="hoy-tarjeta ', html)) == 4
+        assert "Próximas entregas" in html
+        # Ya no se cargan la tabla completa de materia prima ni los gráficos de tendencia
+        assert "Materia Prima Registrada" not in html and 'id="grafico-pedidos"' not in html
+    # Lo accionable arriba: «Para hoy» y las listas antes del Centro de Atención
     html = entrar("admin").get("/dashboard").get_data(as_text=True)
-    assert html.index("Centro de Atención") < html.index("Materia Prima Registrada")
+    assert html.index('class="hoy"') < html.index("Aprobaciones pendientes") < html.index("Centro de Atención")
+    # Ventas no ve inventario; el gestor no ve aprobaciones
+    assert "Insumos por reponer" not in entrar("ventas").get("/dashboard").get_data(as_text=True)
+    gestor = entrar("gestor").get("/dashboard").get_data(as_text=True)
+    assert "Insumos por reponer" in gestor and 'id="solicitudes-nuevas"' not in gestor
+
+
+def test_listas_del_dashboard_tienen_maximo_seis_filas(app, ids, ctx, entrar):
+    from datetime import date, timedelta
+    from app.models import Cliente, Pedido
+    cliente = Cliente.query.first()
+    for n in range(10):
+        db.session.add(Pedido(folio=f"ORD-LIM-{n:03d}", modelo_prenda="Camisa", cantidad=10, estado="Recibido",
+                              fecha_limite=date.today() + timedelta(days=n + 1), cliente=cliente))
+    db.session.commit()
+    html = entrar("admin").get("/dashboard").get_data(as_text=True)
+    filas = re.findall(r'href="/rastreo/ORD-[^"]+"', html)
+    assert len(filas) <= 6
+    assert "en el tablero" in html                     # enlace para ver el resto
+
+
+def test_graficos_de_tendencia_estan_en_reportes(app, ids, entrar):
+    html = entrar("admin").get("/reportes/").get_data(as_text=True)
+    assert 'id="grafico-pedidos"' in html and 'id="grafico-finanzas"' in html
+    datos = json.loads(re.search(r'id="datos-graficos">(.*?)</script>', html, re.S).group(1))
+    assert len(datos["etiquetas"]) == 30                # 30 días por defecto, un punto por día
+    anual = entrar("admin").get("/reportes/?dias=365").get_data(as_text=True)
+    datos = json.loads(re.search(r'id="datos-graficos">(.*?)</script>', anual, re.S).group(1))
+    assert len(datos["etiquetas"]) == 12
 
 
 def test_portal_del_cliente_no_muestra_indicadores_internos(app, ids, entrar):
     html = entrar("cliente").get("/dashboard").get_data(as_text=True)
     assert "Centro de Atención" not in html and "Margen" not in html
+
+
+# --- Reportes: el periodo cambia los datos ---------------------------------------------
+def test_reportes_cambian_con_el_periodo(app, entrar, ctx):
+    from datetime import datetime, timedelta
+    from app.extensions import db
+    from app.models import Pedido
+    viejo = Pedido.query.first()
+    viejo.creado_en = datetime.now() - timedelta(days=60)
+    for p in Pedido.query.filter(Pedido.id != viejo.id):
+        p.creado_en = datetime.now() - timedelta(days=200)
+    db.session.commit()
+    admin = entrar("admin")
+    html7 = admin.get("/reportes/?dias=7").get_data(as_text=True)
+    html90 = admin.get("/reportes/?dias=90").get_data(as_text=True)
+    assert 'Pedidos recibidos' in html7
+    import re
+    def recibidos(h):
+        return int(re.search(r'Pedidos recibidos <span.*?kpi__valor">(\d+)', h, re.S).group(1))
+    assert recibidos(html7) == 0 and recibidos(html90) == 1
+    assert "por día" in html7 and "por semana" in html90
+    assert '"etiquetas"' in html90
+
+
+def test_reportes_periodo_invalido_usa_30_dias(entrar):
+    assert "últimos 30 días" in entrar("admin").get("/reportes/?dias=999").get_data(as_text=True)
+
+
+# --- Gráficos en las secciones (fase 11) -----------------------------------------------
+def _datos_grafico(html, id_):
+    return json.loads(re.search(rf'id="{id_}-datos">(.*?)</script>', html, re.S).group(1))
+
+
+def test_portal_del_cliente_tiene_graficos(app, ids, entrar):
+    html = entrar("cliente").get("/dashboard").get_data(as_text=True)
+    fases = _datos_grafico(html, "grafico-fases")
+    assert "Entregado" not in fases["etiquetas"] and len(fases["etiquetas"]) == 5
+    assert "Entregas a tiempo" in html
+
+
+def test_detalle_de_insumo_muestra_existencia(app, ids, entrar):
+    html = entrar("gestor").get(f"/telas/{ids.popelina}").get_data(as_text=True)
+    datos = _datos_grafico(html, "grafico-stock")
+    assert len(datos["etiquetas"]) == 60 and datos["series"][1]["nombre"] == "Stock mínimo"
+
+
+def test_graficos_de_bitacora_metas_y_solicitudes(app, ids, entrar):
+    admin = entrar("admin")
+    assert 'data-grafico="grafico-bitacora-datos"' in admin.get("/admin/bitacora").get_data(as_text=True)
+    assert 'data-grafico="grafico-solicitudes-datos"' in admin.get("/solicitudes/").get_data(as_text=True)
+    assert "grafico-solicitudes-datos" not in entrar("cliente").get("/solicitudes/").get_data(as_text=True)

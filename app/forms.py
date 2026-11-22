@@ -7,7 +7,7 @@ from wtforms.validators import (
     DataRequired, NumberRange, Email, EqualTo, Length, Optional, ValidationError, Regexp,
 )
 
-from app.models import Usuario, ROLES, ESTADOS_PERMISO, NOMBRES_FASES
+from app.models import Usuario, ROLES, ESTADOS_PERMISO, NOMBRES_FASES, usuario_con_telefono
 
 
 # ---------------------------------------------------------------------------
@@ -79,6 +79,15 @@ class PerfilForm(FlaskForm):
     cargo = StringField('Cargo / Ocupación', validators=[Optional(), Length(max=80)])
     submit = SubmitField('Actualizar Perfil')
 
+    def __init__(self, *args, usuario_id=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._usuario_id = usuario_id
+
+    def validate_telefono(self, field):
+        # No se dice a quién pertenece: solo el administrador puede verlo.
+        if field.data and usuario_con_telefono(field.data, excluir_id=self._usuario_id):
+            raise ValidationError('Este número ya está registrado en otra cuenta. Si es tuyo, pide ayuda al administrador.')
+
 
 class CambiarPasswordForm(FlaskForm):
     password_actual = PasswordField('Contraseña actual', validators=[DataRequired('Escribe tu contraseña actual.')])
@@ -148,7 +157,10 @@ class UsuarioAdminForm(FlaskForm):
     nombre = StringField('Nombre Completo', validators=[DataRequired(), Length(max=100)])
     email = StringField('Correo Electrónico', validators=[DataRequired(), Length(max=120)])
     cargo = StringField('Cargo', validators=[Optional(), Length(max=80)])
-    telefono = StringField('Teléfono', validators=[Optional(), Length(max=20)])
+    telefono = StringField('Teléfono', validators=[
+        Optional(), Length(max=20),
+        Regexp(r'^[0-9+\-\s()]{7,20}$', message='Usa solo números, espacios, +, - o paréntesis.'),
+    ], description='Con código de país (+503). Un número solo puede estar en una cuenta.')
     rol = SelectField('Rol', choices=list(ROLES.items()), validators=[DataRequired()])
     estado_permiso = SelectField('Estado de la cuenta', choices=list(ESTADOS_PERMISO.items()), validators=[DataRequired()])
     cliente_id = SelectField(
@@ -166,6 +178,11 @@ class UsuarioAdminForm(FlaskForm):
         existente = Usuario.query.filter(db_lower(Usuario.email) == field.data.strip().lower()).first()
         if existente and existente.id != self._usuario_id:
             raise ValidationError('Otro usuario ya usa este correo.')
+
+    def validate_telefono(self, field):
+        otro = usuario_con_telefono(field.data, excluir_id=self._usuario_id) if field.data else None
+        if otro:
+            raise ValidationError(f'Este número ya está registrado en la cuenta de {otro.nombre} ({otro.email}).')
 
     def validate_cliente_id(self, field):
         if self.rol.data == 'cliente' and not field.data:

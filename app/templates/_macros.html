@@ -55,3 +55,74 @@
     <span class="badge badge--neutral">{{ pedido.dias_restantes }} d restantes</span>
 {% endif %}
 {% endmacro %}
+
+{# Controles de paginación. Conserva los filtros de la URL y permite elegir cuántos ver.
+   Uso: {{ paginacion(pagina, "solicitudes") }} — `pagina` viene de utils.paginar(). #}
+{% macro paginacion(pagina, nombre="registros") %}
+{% if pagina.total %}
+{% set base = dict(request.view_args or {}) %}
+{% set filtros = request.args.to_dict() %}
+{% macro enlace(n) %}{% set _ = filtros.update({'pagina': n}) %}{{ url_for(request.endpoint, **dict(base, **filtros)) }}{% endmacro %}
+<nav class="paginacion" aria-label="Páginas de {{ nombre }}">
+    <span class="paginacion__info">
+        {{ pagina.first }}–{{ pagina.last }} de <strong>{{ "{:,}".format(pagina.total) }}</strong> {{ nombre }}
+    </span>
+    {% if pagina.pages > 1 %}
+    <div class="paginacion__paginas">
+        {% if pagina.has_prev %}
+        <a class="paginacion__btn" href="{{ enlace(pagina.prev_num) }}" aria-label="Página anterior"><i data-lucide="chevron-left"></i></a>
+        {% else %}<span class="paginacion__btn is-off" aria-hidden="true"><i data-lucide="chevron-left"></i></span>{% endif %}
+        {% for n in pagina.iter_pages(left_edge=1, left_current=1, right_current=2, right_edge=1) %}
+            {% if n is none %}<span class="paginacion__hueco">…</span>
+            {% elif n == pagina.page %}<span class="paginacion__btn is-on" aria-current="page">{{ n }}</span>
+            {% else %}<a class="paginacion__btn" href="{{ enlace(n) }}">{{ n }}</a>{% endif %}
+        {% endfor %}
+        {% if pagina.has_next %}
+        <a class="paginacion__btn" href="{{ enlace(pagina.next_num) }}" aria-label="Página siguiente"><i data-lucide="chevron-right"></i></a>
+        {% else %}<span class="paginacion__btn is-off" aria-hidden="true"><i data-lucide="chevron-right"></i></span>{% endif %}
+    </div>
+    {% endif %}
+    <form method="get" class="paginacion__por">
+        {% for k, v in request.args.items() if k not in ('por', 'pagina', 'orden') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+        {% if pagina.opciones_orden %}
+        <label>Ordenar por
+            <select name="orden" onchange="this.form.submit()" aria-label="Ordenar {{ nombre }}">
+                {% for k, etiqueta in pagina.opciones_orden %}<option value="{{ k }}" {% if k == pagina.orden_actual %}selected{% endif %}>{{ etiqueta }}</option>{% endfor %}
+            </select>
+        </label>
+        {% endif %}
+        <label>Ver
+            <select name="por" onchange="this.form.submit()" aria-label="Registros por página">
+                {% for t in (10, 25, 50, 100) %}<option value="{{ t }}" {% if t == pagina.per_page %}selected{% endif %}>{{ t }}</option>{% endfor %}
+                {% if pagina.per_page not in (10, 25, 50, 100) %}<option value="{{ pagina.per_page }}" selected>{{ pagina.per_page }}</option>{% endif %}
+            </select>
+        </label>
+    </form>
+</nav>
+{% endif %}
+{% endmacro %}
+
+
+{# Gráfico declarativo (Chart.js vía static/js/graficos-simples.js) con su tabla de datos.
+   datos = {tipo, etiquetas, series:[{nombre, valores, color?, colores?}], unidad?, moneda?, porcentaje?, apilado?} #}
+{% macro grafico(id, datos, etiqueta, alto=260, tabla=True) %}
+<div class="grafico" style="height: {{ alto }}px;">
+    <canvas data-grafico="{{ id }}-datos" id="{{ id }}" role="img" aria-label="{{ etiqueta }}"></canvas>
+</div>
+<script type="application/json" id="{{ id }}-datos">{{ datos | tojson }}</script>
+{% if tabla %}
+<details class="grafico__tabla">
+    <summary>Ver datos</summary>
+    <div class="tabla-wrap">
+        <table>
+            <thead><tr><th></th>{% for s in datos.series %}<th class="num">{{ s.nombre }}</th>{% endfor %}</tr></thead>
+            <tbody>
+                {% for e in datos.etiquetas %}{% set i = loop.index0 %}
+                <tr><td>{{ e }}</td>{% for s in datos.series %}<td class="num">{% set v = s.valores[i] %}{% if datos.moneda %}{{ v | dinero }}{% elif datos.porcentaje %}{{ v }} %{% else %}{{ "{:,}".format(v) if v is number and v == v | int else v }}{% endif %}</td>{% endfor %}</tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</details>
+{% endif %}
+{% endmacro %}

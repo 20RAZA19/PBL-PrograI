@@ -81,6 +81,46 @@ FASES = [
 NOMBRES_FASES = [f["nombre"] for f in FASES]
 
 
+def solo_digitos(texto):
+    return "".join(c for c in (texto or "") if c.isdigit())
+
+
+def telefonos_coinciden(a, b):
+    """Dos teléfonos son el mismo si sus dígitos coinciden, aunque uno no tenga
+    código de país (+503 7777-1234 y 7777-1234). Se exigen 8 dígitos para no
+    confundir números cortos."""
+    a, b = solo_digitos(a), solo_digitos(b)
+    if len(a) < 8 or len(b) < 8:
+        return False
+    corto, largo = sorted((a, b), key=len)
+    return largo.endswith(corto)
+
+
+def usuario_con_telefono(telefono, excluir_id=None):
+    """Otra cuenta que ya tenga ese número, o None."""
+    if len(solo_digitos(telefono)) < 8:
+        return None
+    candidatos = Usuario.query.filter(Usuario.telefono.isnot(None))
+    if excluir_id:
+        candidatos = candidatos.filter(Usuario.id != excluir_id)
+    return next((u for u in candidatos if telefonos_coinciden(u.telefono, telefono)), None)
+
+
+def telefonos_duplicados():
+    """Grupos de cuentas que comparten número (para avisar al administrador)."""
+    usuarios = Usuario.query.filter(Usuario.telefono.isnot(None)).order_by(Usuario.id).all()
+    grupos, usados = [], set()
+    for i, u in enumerate(usuarios):
+        if u.id in usados:
+            continue
+        iguales = [v for v in usuarios[i + 1:] if v.id not in usados and telefonos_coinciden(u.telefono, v.telefono)]
+        if iguales:
+            grupo = [u] + iguales
+            usados.update(x.id for x in grupo)
+            grupos.append(grupo)
+    return grupos
+
+
 def fase_por_estado(estado):
     """Devuelve el número de fase (1..N) para un estado de pedido."""
     try:
@@ -1222,3 +1262,105 @@ class Mensaje(db.Model):
             "texto": self.texto,
             "hora": self.creado_en.strftime("%d/%m %H:%M"),
         }
+
+
+# ---------------------------------------------------------------------------
+# Metas e incentivos del equipo
+# ---------------------------------------------------------------------------
+ESTADOS_PAGO_INCENTIVO = {"pendiente": "Por pagar", "pagado": "Pagado"}
+ROLES_CON_METAS = ("gestor", "ventas")
+
+
+class Meta(db.Model):
+    """Objetivo mensual con un incentivo en dinero.
+
+    Se asigna a un rol completo (todos los encargados de taller, por ejemplo) o a
+    una persona. El avance no se captura a mano: lo calcula app.metas.indicadores
+    con los datos del sistema (movimientos de pedidos, solicitudes, calidad…).
+    """
+    __tablename__ = "metas"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(120), nullable=False)
+    indicador = db.Column(db.String(40), nullable=False)
+    rol = db.Column(db.String(20), nullable=True)            # meta de todo el rol…
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=True)  # …o de una persona
+    objetivo = db.Column(db.Numeric(12, 2), nullable=False)
+    incentivo = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    umbral_parcial = db.Column(db.Integer, nullable=True)    # % de avance que paga la mitad del incentivo
+    descripcion = db.Column(db.String(255))
+    activa = db.Column(db.Boolean, nullable=False, default=True)
+    # Periodo de la meta: solo cuenta lo ocurrido entre estas fechas (ambas incluidas).
+    # Sin fechas (metas antiguas), la meta se repite cada mes.
+    fecha_inicio = db.Column(db.Date, nullable=True)
+    fecha_fin = db.Column(db.Date, nullable=True)
+    creado_en = db.Column(db.DateTime, default=datetime.now, nullable=False)
+    creada_por_id = db.Column(db.Integer, db.ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+
+    usuario = db.relationship("Usuario", foreign_keys=[usuario_id])
+    creada_por = db.relationship("Usuario", foreign_keys=[creada_por_id])
+
+    @property
+    def tiene_periodo(self):
+        return bool(self.fecha_inicio and self.fecha_fin)
+
+    def vigente_en(self, inicio_mes, fin_mes):
+        """¿El periodo de la meta toca el mes [inicio_mes, fin_mes)? (fechas date)."""
+        if not self.tiene_periodo:
+            return True
+        return self.fecha_inicio < fin_mes and self.fecha_fin >= inicio_mes
+
+    @property
+    def periodo_texto(self):
+        if not self.tiene_periodo:
+            return "Cada mes"
+        meses = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+        a, b = self.fecha_inicio, self.fecha_fin
+        txt = lambda f, con_anio=True: f"{f.day} {meses[f.month - 1]}" + (f" {f.year}" if con_anio else "")
+        return f"{txt(a, a.year != b.year)} – {txt(b)}"
+
+    def aplica_a(self, usuario):
+        if not self.activa or usuario is None:
+            return False
+        if self.usuario_id:
+            return self.usuario_id == usuario.id
+        return self.rol == usuario.rol
+
+    @property
+    def destinatario(self):
+        if self.usuario_id and self.usuario:
+            return self.usuario.nombre
+        return f"Todo el rol: {ROLES.get(self.rol, self.rol)}"
+
+
+class PagoIncentivo(db.Model):
+    """Incentivo ganado por una persona en un mes, fijado al cerrar ese mes.
+
+    Guarda una copia del resultado (valor, objetivo, avance) para que el pago no
+    cambie aunque después se edite la meta o se corrijan datos del mes.
+    """
+    __tablename__ = "pagos_incentivo"
+    __table_args__ = (db.UniqueConstraint("usuario_id", "meta_id", "anio", "mes", name="uq_pago_meta_mes"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True)
+    meta_id = db.Column(db.Integer, db.ForeignKey("metas.id", ondelete="SET NULL"), nullable=True)
+    meta_nombre = db.Column(db.String(120), nullable=False)
+    anio = db.Column(db.Integer, nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+    valor = db.Column(db.Numeric(12, 2))
+    objetivo = db.Column(db.Numeric(12, 2), nullable=False)
+    avance = db.Column(db.Integer, nullable=False, default=0)        # porcentaje 0-100
+    monto = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    estado = db.Column(db.String(12), nullable=False, default="pendiente")
+    creado_en = db.Column(db.DateTime, default=datetime.now, nullable=False)
+    pagado_en = db.Column(db.DateTime)
+    pagado_por_id = db.Column(db.Integer, db.ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+
+    usuario = db.relationship("Usuario", foreign_keys=[usuario_id])
+    meta = db.relationship("Meta")
+    pagado_por = db.relationship("Usuario", foreign_keys=[pagado_por_id])
+
+    @property
+    def estado_legible(self):
+        return ESTADOS_PAGO_INCENTIVO.get(self.estado, self.estado)

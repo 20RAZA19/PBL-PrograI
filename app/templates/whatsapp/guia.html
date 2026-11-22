@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Consultar por WhatsApp{% endblock %}
+
+{% set numero_visible = ("+" ~ numero[:1] ~ " " ~ numero[1:4] ~ " " ~ numero[4:7] ~ " " ~ numero[7:]) if numero | length == 11 else ("+" ~ numero) %}
+
+{% macro charla(pregunta, respuesta) %}
+<div class="wa-chat wa-chat--ejemplo">
+    <div class="wa-msg wa-msg--cliente">{{ pregunta }}</div>
+    <div class="wa-msg wa-msg--bot">{{ respuesta }}</div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Consulta tus pedidos por WhatsApp</h1>
+        <p>Escribe una palabra y el bot te responde al instante con el avance de tus pedidos. No hace falta iniciar sesión.</p>
+    </div>
+    {% if bot_activo %}<span class="badge badge--ok"><i data-lucide="circle-check"></i> Bot activo</span>
+    {% else %}<span class="badge badge--warn"><i data-lucide="clock"></i> Bot aún no activado</span>{% endif %}
+</div>
+
+{% if not bot_activo %}
+<div class="flash flash--warn guia-aviso"><i data-lucide="info"></i>
+    <div>El bot todavía no está conectado a WhatsApp. Mientras tanto puedes ver tus pedidos en <a href="{{ url_for('rastreo.lista') }}">Rastrear pedido</a>{% if current_user.es_staff %}, y el administrador puede probarlo en el <a href="{{ url_for('whatsapp.simulador') }}">simulador</a>{% endif %}.</div>
+</div>
+{% endif %}
+
+{% if revision %}
+<section class="panel guia-revision {{ 'guia-revision--ok' if revision.listo else '' }}">
+    <div class="panel__head">
+        <div>
+            <h2>{% if revision.listo %}Tu número está listo{% else %}Antes de escribir, revisa tu número{% endif %}</h2>
+            <p>El bot solo responde al teléfono guardado en tu perfil.</p>
+        </div>
+        <a href="{{ url_for('auth.perfil') }}" class="btn btn--outline btn--sm"><i data-lucide="user-pen"></i> Editar mi perfil</a>
+    </div>
+    <ul class="guia-checks">
+        <li class="{{ 'ok' if revision.tiene_telefono else 'no' }}">
+            <i data-lucide="{{ 'circle-check' if revision.tiene_telefono else 'circle-x' }}"></i>
+            <div><strong>Teléfono registrado</strong>
+                <span>{% if revision.tiene_telefono %}{{ revision.telefono }}{% else %}Agrega tu número de WhatsApp en tu perfil.{% endif %}</span></div>
+        </li>
+        <li class="{{ 'ok' if revision.codigo_pais else 'aviso' }}">
+            <i data-lucide="{{ 'circle-check' if revision.codigo_pais else 'circle-alert' }}"></i>
+            <div><strong>Con código de país</strong>
+                <span>{% if revision.codigo_pais %}Correcto.{% else %}Escríbelo con +503 delante, por ejemplo +503 7123 4567.{% endif %}</span></div>
+        </li>
+        <li class="{{ 'no' if revision.repetido else 'ok' }}">
+            <i data-lucide="{{ 'circle-x' if revision.repetido else 'circle-check' }}"></i>
+            <div><strong>Número en una sola cuenta</strong>
+                <span>{% if revision.repetido %}Ese número también está en otra cuenta y el bot no sabe a cuál responder. Pide al administrador que lo corrija.{% else %}Correcto.{% endif %}</span></div>
+        </li>
+        <li class="{{ 'ok' if revision.aprobada else 'no' }}">
+            <i data-lucide="{{ 'circle-check' if revision.aprobada else 'circle-x' }}"></i>
+            <div><strong>Cuenta aprobada y vinculada a tu empresa</strong>
+                <span>{% if revision.aprobada %}Correcto.{% else %}Tu cuenta aún espera aprobación del administrador.{% endif %}</span></div>
+        </li>
+    </ul>
+</section>
+{% endif %}
+
+<h2 class="guia-titulo">Tres pasos para empezar</h2>
+<div class="guia-pasos">
+    <article class="guia-paso">
+        <span class="guia-paso__n">1</span>
+        <h3>Guarda el número</h3>
+        <p>Agrégalo a tus contactos como <strong>Arte y Color</strong>:</p>
+        <p class="guia-numero">{{ numero_visible if numero else "—" }}</p>
+        {% if enlace %}<a href="{{ enlace }}" class="btn btn--primary btn--sm" target="_blank" rel="noopener"><i data-lucide="message-circle"></i> Abrir en WhatsApp</a>{% endif %}
+    </article>
+    <article class="guia-paso">
+        <span class="guia-paso__n">2</span>
+        <h3>Envía la frase de unión</h3>
+        <p>Solo la primera vez. Mientras el bot esté en fase de prueba, WhatsApp pide esta frase exacta:</p>
+        {% if union %}<p class="guia-codigo"><code>{{ union }}</code></p>
+        {% else %}<p class="guia-codigo guia-codigo--falta">Pídela a tu asesor de Arte y Color.</p>{% endif %}
+        <p class="small muted">Si pasan 3 días sin que escribas, vuelve a enviarla.</p>
+    </article>
+    <article class="guia-paso">
+        <span class="guia-paso__n">3</span>
+        <h3>Escribe una palabra</h3>
+        <p>Por ejemplo <strong>ESTADO</strong>. Da igual si usas mayúsculas, minúsculas o tildes.</p>
+        <p class="small muted">Si escribes otra cosa, el bot te contesta con el menú de opciones.</p>
+    </article>
+</div>
+
+<h2 class="guia-titulo">Qué puedes pedir</h2>
+<div class="guia-comandos">
+    <article class="panel guia-comando">
+        <header><code>ESTADO</code><span>también: PEDIDOS, AVANCE</span></header>
+        <p>Lista tus pedidos en proceso: folio, prenda, fase en la que van y fecha de entrega.</p>
+        {% if vista_estado %}
+        <p class="guia-real"><i data-lucide="sparkles"></i> Así te respondería ahora mismo:</p>
+        {{ charla("ESTADO", vista_estado) }}
+        {% else %}
+        {{ charla("ESTADO", "Pedidos en proceso de Colegio San José:\n• ORD-20261026-001 · Polo escolar · En Costura (3/6) · entrega 28/11\nDetalle con tu token en " ~ url_for('seguimiento.consulta', _external=True)) }}
+        {% endif %}
+    </article>
+
+    <article class="panel guia-comando">
+        <header><code>TOKEN</code><span>también: MI TOKEN, LLAVE</span></header>
+        <p>Te da tu llave de seguimiento. Con ella y los últimos 4 dígitos de tu teléfono ves en la web el recorrido de cada pedido, con mapa y movimientos.</p>
+        {{ charla("TOKEN", "Tu token de seguimiento es: AYC-7KQ2-M9XD\nÚsalo junto con los últimos 4 dígitos de este teléfono en " ~ url_for('seguimiento.consulta', _external=True) ~ " para ver el estado de tus pedidos.") }}
+    </article>
+
+    <article class="panel guia-comando">
+        <header><code>NUEVO TOKEN</code><span>también: REGENERAR</span></header>
+        <p>Crea una llave nueva y anula la anterior. Úsalo si compartiste el token con alguien que ya no debe verlo.</p>
+        {{ charla("NUEVO TOKEN", "Tu nuevo token es: AYC-P4WT-2HNC\nEl anterior ya no funciona.") }}
+    </article>
+
+    <article class="panel guia-comando">
+        <header><code>RECUPERAR</code><span>también: CONTRASEÑA, CLAVE</span></header>
+        <p>Te indica cómo cambiar tu contraseña. Por seguridad, el código llega a tu correo, nunca por WhatsApp.</p>
+        {{ charla("RECUPERAR", "Por seguridad, la contraseña se recupera por correo. Entra a " ~ url_for('auth.recuperar', _external=True) ~ " y escribe tu correo: te enviaremos un código de 6 dígitos.") }}
+    </article>
+
+    <article class="panel guia-comando">
+        <header><code>MENÚ</code><span>o cualquier otro texto</span></header>
+        <p>Muestra las opciones disponibles.</p>
+        {{ charla("Hola", "Hola, " ~ (current_user.nombre.split()[0] if current_user.nombre else "") ~ ". Escribe una palabra:\n• ESTADO – avance de tus pedidos\n• TOKEN – tu llave de seguimiento\n• NUEVO TOKEN – reemplazar la llave\n• MENÚ – ver estas opciones") }}
+    </article>
+</div>
+
+<div class="layout-2 guia-pie">
+    <section class="panel">
+        <div class="panel__head"><div><h2>Si el bot no responde</h2><p>Revisa en este orden</p></div></div>
+        <ol class="wa-pasos guia-lista">
+            <li><strong>¿Te contestó «Este número no está vinculado»?</strong> El teléfono de tu perfil no coincide con el que usas en WhatsApp, o está en dos cuentas. Corrígelo en tu perfil.</li>
+            <li><strong>¿No contesta nada?</strong> Vuelve a enviar la frase de unión del paso 2: se vence a los 3 días sin escribir.</li>
+            <li><strong>¿Dice que enviaste demasiados mensajes?</strong> Puedes enviar hasta {{ max_mensajes }} cada 15 minutos. Espera un momento.</li>
+            <li>Si nada de lo anterior funciona, escríbenos desde <a href="{{ url_for('mensajes.lista') if current_user.rol in ('cliente', 'admin', 'ventas') else url_for('faq.index') }}">Mensajes</a>.</li>
+        </ol>
+    </section>
+    <section class="panel">
+        <div class="panel__head"><div><h2>Tu información está protegida</h2></div></div>
+        <ul class="guia-seguridad">
+            <li><i data-lucide="eye"></i> Solo consulta: no se pueden pedir prendas, cambiar pedidos ni ver precios.</li>
+            <li><i data-lucide="smartphone"></i> Solo responde al número guardado en tu perfil.</li>
+            <li><i data-lucide="key-round"></i> Nunca te pedirá tu contraseña ni códigos.</li>
+            <li><i data-lucide="scroll-text"></i> Cada consulta queda registrada sin guardar tu token.</li>
+        </ul>
+    </section>
+</div>
+{% endblock %}

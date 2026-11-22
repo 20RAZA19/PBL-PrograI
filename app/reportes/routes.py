@@ -66,24 +66,32 @@ def buscar():
 @login_required
 @roles_required("admin")
 def index():
+    from app.indicadores import graficos
     dias = request.args.get("dias", 30, type=int)
     dias = dias if dias in (7, 30, 90, 365) else 30
-    desde = datetime.combine(date.today() - timedelta(days=dias - 1), datetime.min.time())
+    hoy = date.today()
+    desde = datetime.combine(hoy - timedelta(days=dias - 1), datetime.min.time())
+    antes = desde - timedelta(days=dias)          # periodo anterior, para comparar
 
-    pedidos = Pedido.query.all()
-    entregados = [p for p in pedidos if p.entregado]
-    # Puntualidad: un pedido entregado a tiempo tiene su evento "Entregado" antes o en la fecha límite
-    a_tiempo = 0
-    for p in entregados:
-        ev = next((e for e in reversed(p.eventos) if e.estado == "Entregado"), None)
-        if ev is None or ev.fecha.date() <= p.fecha_limite:
-            a_tiempo += 1
-    vencidos = [p for p in pedidos if p.alerta_entrega == "vencido"]
+    # Todo lo que se muestra depende del periodo elegido (salvo «vencidos», que es la foto de hoy).
+    pedidos = Pedido.query.filter(Pedido.creado_en >= desde).all()
+    previos = Pedido.query.filter(Pedido.creado_en >= antes, Pedido.creado_en < desde).all()
+
+    # Entregas hechas en el periodo (primer «Entregado» de cada pedido) y su puntualidad
+    entregas = {}
+    for e in (EventoRastreo.query.filter(EventoRastreo.estado == "Entregado", EventoRastreo.fecha >= desde)
+              .order_by(EventoRastreo.fecha)):
+        entregas.setdefault(e.pedido_id, e)
+    a_tiempo = sum(1 for e in entregas.values()
+                   if e.pedido.fecha_limite is None or e.fecha.date() <= e.pedido.fecha_limite)
+
+    vencidos = [p for p in Pedido.query.filter(Pedido.fecha_limite < hoy).order_by(Pedido.fecha_limite)
+                if p.alerta_entrega == "vencido"]
 
     por_estado = Counter(p.estado for p in pedidos)
     max_estado = max(por_estado.values() or [1])
 
-    # Clientes con más unidades pedidas
+    # Clientes con más unidades pedidas en el periodo
     unidades_cliente = defaultdict(int)
     for p in pedidos:
         unidades_cliente[p.cliente.nombre] += p.cantidad
@@ -108,24 +116,36 @@ def index():
         if e.usuario:
             actividad[e.usuario.nombre] += 1
 
+    def variacion(actual, anterior):
+        if not anterior:
+            return None
+        return round((actual - anterior) / anterior * 100)
+
+    unidades = sum(p.cantidad for p in pedidos)
     resumen = {
         "pedidos": len(pedidos),
-        "activos": len(pedidos) - len(entregados),
-        "entregados": len(entregados),
-        "puntualidad": round(a_tiempo / len(entregados) * 100) if entregados else None,
+        "pedidos_var": variacion(len(pedidos), len(previos)),
+        "activos": sum(1 for p in pedidos if not p.entregado),
+        "entregados": len(entregas),
+        "puntualidad": round(a_tiempo / len(entregas) * 100) if entregas else None,
         "vencidos": len(vencidos),
-        "unidades": sum(p.cantidad for p in pedidos),
+        "unidades": unidades,
+        "unidades_var": variacion(unidades, sum(p.cantidad for p in previos)),
         "insumos_alerta": sum(1 for i in Insumo.query.filter(Insumo.activo.is_(True)) if i.alerta_stock != "ok"),
         "movimientos": len(salidas) + len(entradas),
         "clientes": Cliente.query.count(),
         "proveedores": Proveedor.query.count(),
         "usuarios": Usuario.query.count(),
     }
+    datos = graficos(current_user, dias=dias)
+    datos["estados"] = {"etiquetas": list(NOMBRES_FASES), "valores": [por_estado.get(f, 0) for f in NOMBRES_FASES]}
+    datos["puntualidad"] = {"a_tiempo": a_tiempo, "tarde": len(entregas) - a_tiempo}
     return render_template(
-        "reportes/index.html", resumen=resumen, dias=dias, por_estado=por_estado,
+        "reportes/index.html", resumen=resumen, dias=dias, desde=desde, por_estado=por_estado,
         max_estado=max_estado, top_clientes=top_clientes, max_cliente=max_cliente,
         top_consumo=top_consumo, max_consumo=max_consumo, actividad=actividad.most_common(6),
-        vencidos=vencidos, NOMBRES_FASES=NOMBRES_FASES,
+        vencidos=vencidos[:6], total_vencidos=len(vencidos), NOMBRES_FASES=NOMBRES_FASES, graficos=datos,
+        tramo={7: "por día", 30: "por día", 90: "por semana", 365: "por mes"}[dias],
     )
 
 

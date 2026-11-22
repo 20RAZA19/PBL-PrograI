@@ -156,3 +156,72 @@ def test_usuario_con_sesion_no_ve_el_formulario(entrar):
 def test_login_enlaza_a_recuperar(app):
     html = app.test_client().get("/auth/login").get_data(as_text=True)
     assert "/auth/recuperar" in html and "por correo" in html
+
+
+# --- Reenvío, motivos en bitácora y diagnóstico de correo ----------------------
+def test_reenviar_manda_un_codigo_nuevo_y_anula_el_anterior(app, ctx, buzon):
+    c, _ = _pedir(app)
+    primero = _codigo_de(buzon[0])
+    u = Usuario.query.filter_by(email="cliente@test.com").one()
+    u.recuperacion_expira -= timedelta(minutes=2)          # pasó el minuto de espera
+    db.session.commit()
+    r = c.post("/auth/recuperar/reenviar", data={"email": "cliente@test.com"})
+    assert r.status_code == 302 and r.headers["Location"].endswith("/auth/recuperar/codigo")
+    assert len(buzon) == 2
+    segundo = _codigo_de(buzon[1])
+    assert _cambiar(app, "cliente@test.com", primero).status_code == 200      # el viejo ya no sirve
+    assert _cambiar(app, "cliente@test.com", segundo).status_code == 302
+
+
+def test_reenviar_respeta_la_espera_de_un_minuto(app, ctx, buzon):
+    c, _ = _pedir(app)
+    c.post("/auth/recuperar/reenviar", data={"email": "cliente@test.com"})
+    assert len(buzon) == 1
+    html = c.get("/auth/recuperar/codigo").get_data(as_text=True)
+    assert 'id="btn-reenviar"' in html and "disabled" in html.split('id="btn-reenviar"')[1][:200]
+
+
+def test_la_espera_es_igual_exista_o_no_la_cuenta(app, ctx, buzon):
+    c1, _ = _pedir(app, "cliente@test.com")
+    c2, _ = _pedir(app, "nadie@test.com")
+    def boton(c):
+        return c.get("/auth/recuperar/codigo").get_data(as_text=True).split('id="btn-reenviar"')[1][:120]
+    assert ("disabled" in boton(c1)) == ("disabled" in boton(c2))
+
+
+def test_bitacora_explica_por_que_no_se_envio(app, ctx, buzon):
+    from app.models import Auditoria
+    u = Usuario.query.filter_by(email="cliente@test.com").one()
+    u.estado_permiso = "pendiente"
+    db.session.commit()
+    _pedir(app)
+    assert buzon == []
+    assert Auditoria.query.filter(Auditoria.descripcion.contains("pendiente de aprobación")).count() == 1
+
+
+def test_bitacora_guarda_el_error_de_gmail(app, ctx, buzon):
+    from app.models import Auditoria
+    app.config["CORREO_FALLA_PRUEBA"] = "Gmail rechazó el usuario o la contraseña (código 535)."
+    _pedir(app)
+    assert Auditoria.query.filter(Auditoria.descripcion.contains("código 535")).count() == 1
+
+
+def test_diagnostico_de_correo_solo_admin(entrar, app):
+    assert entrar("gestor").get("/admin/correo").status_code == 403
+    c = entrar("admin")
+    html = c.get("/admin/correo").get_data(as_text=True)
+    assert "Correo del sistema" in html and "Contraseñas de aplicaciones" in html
+    app.extensions["correos_enviados"] = []
+    r = c.post("/admin/correo", data={"destino": "yo@test.com"})
+    assert "Gmail aceptó el correo de prueba" in r.get_data(as_text=True)
+    app.config["CORREO_FALLA_PRUEBA"] = "Faltan MAIL_USERNAME y MAIL_PASSWORD"
+    r = c.post("/admin/correo", data={"destino": "yo@test.com"})
+    assert "No se pudo enviar" in r.get_data(as_text=True) and "Faltan MAIL_USERNAME" in r.get_data(as_text=True)
+
+
+def test_traduce_errores_de_smtp(app):
+    import smtplib
+    from app.correo import explicar_error
+    with app.app_context():
+        assert "contraseña de aplicación" in explicar_error(smtplib.SMTPAuthenticationError(535, b"BadCredentials"))
+        assert "587" in explicar_error(TimeoutError("timed out"))

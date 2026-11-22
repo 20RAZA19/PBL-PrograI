@@ -8,6 +8,7 @@
     <script>
         /* Aplica el tema antes de pintar para evitar parpadeo */
         try { if (localStorage.getItem('theme') === 'dark') document.documentElement.setAttribute('data-theme', 'dark'); } catch (e) {}
+        try { if (localStorage.getItem('nav-compacto') === '1') document.documentElement.classList.add('nav-compacto'); } catch (e) {}
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
@@ -24,7 +25,7 @@
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 16px 16px;">
-            <span style="font-size: 12px; color: rgba(255,255,255,0.45); text-transform: uppercase; font-weight: 600;">Menú Principal</span>
+            <span class="sidebar__rotulo">Menú Principal</span>
             <div class="sidebar__herramientas">
                 <details class="menu avisos" id="avisos">
                     <summary class="avisos__boton" title="Notificaciones" aria-label="Notificaciones{% if avisos_sin_leer %}: {{ avisos_sin_leer }} sin leer{% endif %}">
@@ -69,92 +70,102 @@
         </form>
 
         {% set ep = request.endpoint or "" %}
+        {#  El menú se agrupa por etapa del trabajo. Cada grupo se abre solo si contiene
+            la página actual; lo demás queda plegado para no mostrar todo a la vez. #}
+        {% macro nav_enlace(destino, texto, icono, activo, aviso=0) %}
+        <a href="{{ destino }}" class="nav-link {% if activo %}active{% endif %}" title="{{ texto }}">
+            <i data-lucide="{{ icono }}"></i> <span class="nav-link__texto">{{ texto }}</span>
+            {% if aviso %}<span class="nav-badge">{{ aviso if aviso < 100 else '99+' }}</span>{% endif %}
+        </a>
+        {% endmacro %}
+
+        {% macro nav_grupo(nombre, titulo, icono, dentro, avisos=0) %}
+        <details class="nav-grupo" data-grupo="{{ nombre }}" {% if dentro %}open data-activo="1"{% endif %}>
+            <summary class="nav-grupo__head" title="{{ titulo }}">
+                <i data-lucide="{{ icono }}"></i> <span class="nav-grupo__titulo">{{ titulo }}</span>
+                {% if avisos %}<span class="nav-badge nav-grupo__aviso">{{ avisos if avisos < 100 else '99+' }}</span>{% endif %}
+                <i data-lucide="chevron-down" class="nav-grupo__flecha"></i>
+            </summary>
+            <div class="nav-grupo__lista">{{ caller() }}</div>
+        </details>
+        {% endmacro %}
+
         <nav class="sidebar__nav">
-            <a href="{{ url_for('main.dashboard') }}" class="nav-link {% if ep == 'main.dashboard' %}active{% endif %}">
-                <i data-lucide="layout-dashboard"></i> {{ 'Mi Portal' if current_user.rol == 'cliente' else 'Dashboard' }}
-            </a>
+            {{ nav_enlace(url_for('main.dashboard'), 'Mi Portal' if current_user.rol == 'cliente' else 'Dashboard',
+                      'layout-dashboard', ep == 'main.dashboard') }}
 
-            {% if current_user.es_staff %}
-            <div class="nav-sep">Operación</div>
-            <a href="{{ url_for('telas.lista') }}" class="nav-link {% if ep.startswith('telas.') %}active{% endif %}">
-                <i data-lucide="box"></i> Inventario de Insumos
-            </a>
-            <a href="{{ url_for('main.kanban_pedidos') }}" class="nav-link {% if ep == 'main.kanban_pedidos' %}active{% endif %}">
-                <i data-lucide="kanban"></i> Tablero de Producción
-            </a>
-            <a href="{{ url_for('contactos.lista') }}" class="nav-link {% if ep.startswith('contactos.') %}active{% endif %}">
-                <i data-lucide="contact"></i> Contactos
-            </a>
-            <a href="{{ url_for('solicitudes.lista') }}" class="nav-link {% if ep.startswith('solicitudes.') %}active{% endif %}">
-                <i data-lucide="clipboard-list"></i> Solicitudes
-                {% if prendas_por_atender %}<span class="nav-badge">{{ prendas_por_atender }}</span>{% endif %}
-            </a>
-            <a href="{{ url_for('cotizaciones.lista') }}" class="nav-link {% if ep.startswith('cotizaciones.') %}active{% endif %}">
-                <i data-lucide="file-text"></i> Cotizaciones
-            </a>
-            {% if current_user.rol in ('admin', 'ventas') %}
-            <a href="{{ url_for('mensajes.lista') }}" class="nav-link {% if ep.startswith('mensajes.') %}active{% endif %}">
-                <i data-lucide="messages-square"></i> Mensajes
-                {% if mensajes_sin_leer %}<span class="nav-badge">{{ mensajes_sin_leer }}</span>{% endif %}
-            </a>
-            {% endif %}
-            {% if current_user.puede_comprar %}
-            <a href="{{ url_for('compras.index') }}" class="nav-link {% if ep.startswith('compras.') %}active{% endif %}">
-                <i data-lucide="shopping-cart"></i> Compras
-            </a>
-            {% endif %}
-            <a href="{{ url_for('calidad.index') }}" class="nav-link {% if ep.startswith('calidad.') %}active{% endif %}">
-                <i data-lucide="shield-check"></i> Control de Calidad
-            </a>
-            {% if current_user.puede_ver_costos %}
-            <a href="{{ url_for('costos.index') }}" class="nav-link {% if ep.startswith('costos.') %}active{% endif %}">
-                <i data-lucide="calculator"></i> Costos y Márgenes
-            </a>
-            {% endif %}
-            {% endif %}
-
-            <div class="nav-sep">Seguimiento</div>
-            <a href="{{ url_for('rastreo.lista') }}" class="nav-link {% if ep.startswith('rastreo.') %}active{% endif %}">
-                <i data-lucide="map"></i> Rastrear Pedido
-            </a>
-            <a href="{{ url_for('catalogo.lista') }}" class="nav-link {% if ep.startswith('catalogo.') %}active{% endif %}">
-                <i data-lucide="shopping-bag"></i> Catálogo de Diseños
-            </a>
             {% if current_user.rol == 'cliente' %}
-            <a href="{{ url_for('solicitudes.lista') }}" class="nav-link {% if ep.startswith('solicitudes.') %}active{% endif %}">
-                <i data-lucide="clipboard-list"></i> Mis Solicitudes
-            </a>
-            <a href="{{ url_for('cotizaciones.lista') }}" class="nav-link {% if ep.startswith('cotizaciones.') %}active{% endif %}">
-                <i data-lucide="file-text"></i> Mis Cotizaciones
-            </a>
-            <a href="{{ url_for('mensajes.lista') }}" class="nav-link {% if ep.startswith('mensajes.') %}active{% endif %}">
-                <i data-lucide="messages-square"></i> Mensajes
-                {% if mensajes_sin_leer %}<span class="nav-badge">{{ mensajes_sin_leer }}</span>{% endif %}
-            </a>
+            {# El cliente tiene pocas opciones: se muestran todas, sin plegar. #}
+            <div class="nav-sep">Mis pedidos</div>
+            {{ nav_enlace(url_for('solicitudes.lista'), 'Mis Solicitudes', 'clipboard-list', ep.startswith('solicitudes.')) }}
+            {{ nav_enlace(url_for('cotizaciones.lista'), 'Mis Cotizaciones', 'file-text', ep.startswith('cotizaciones.')) }}
+            {{ nav_enlace(url_for('rastreo.lista'), 'Rastrear Pedido', 'map', ep.startswith('rastreo.')) }}
+
+            <div class="nav-sep">Atención</div>
+            {{ nav_enlace(url_for('mensajes.lista'), 'Mensajes', 'messages-square', ep.startswith('mensajes.'), mensajes_sin_leer) }}
+            {{ nav_enlace(url_for('catalogo.lista'), 'Catálogo de Diseños', 'shopping-bag', ep.startswith('catalogo.')) }}
+            {{ nav_enlace(url_for('whatsapp.guia'), 'Consultar por WhatsApp', 'message-circle', ep == 'whatsapp.guia') }}
+
+            {% elif current_user.es_staff %}
+            {% if current_user.rol in ('gestor', 'ventas') %}
+            {{ nav_enlace(url_for('metas.mis_metas'), 'Mis metas', 'target', ep == 'metas.mis_metas') }}
+            {% endif %}
+            {% set en_pedidos = ep.startswith('solicitudes.') or ep.startswith('cotizaciones.')
+                                or ep == 'main.kanban_pedidos' or ep.startswith('rastreo.') or ep.startswith('calidad.') %}
+            {% call nav_grupo('pedidos', 'Pedidos', 'clipboard-list', en_pedidos, prendas_por_atender) %}
+                {{ nav_enlace(url_for('solicitudes.lista'), 'Solicitudes', 'inbox', ep.startswith('solicitudes.'), prendas_por_atender) }}
+                {{ nav_enlace(url_for('cotizaciones.lista'), 'Cotizaciones', 'file-text', ep.startswith('cotizaciones.')) }}
+                {{ nav_enlace(url_for('main.kanban_pedidos'), 'Tablero de Producción', 'kanban', ep == 'main.kanban_pedidos') }}
+                {{ nav_enlace(url_for('rastreo.lista'), 'Rastrear Pedido', 'map', ep.startswith('rastreo.')) }}
+                {{ nav_enlace(url_for('calidad.index'), 'Control de Calidad', 'shield-check', ep.startswith('calidad.')) }}
+            {% endcall %}
+
+            {% call nav_grupo('taller', 'Taller', 'package', ep.startswith('telas.') or ep.startswith('compras.')) %}
+                {{ nav_enlace(url_for('telas.lista'), 'Inventario de Insumos', 'box', ep.startswith('telas.')) }}
+                {% if current_user.puede_comprar %}
+                {{ nav_enlace(url_for('compras.index'), 'Compras', 'shopping-cart', ep.startswith('compras.')) }}
+                {% endif %}
+            {% endcall %}
+
+            {% set en_clientes = ep.startswith('mensajes.') or ep.startswith('contactos.') or ep.startswith('catalogo.') %}
+            {% set avisos_clientes = mensajes_sin_leer if current_user.rol in ('admin', 'ventas') else 0 %}
+            {% call nav_grupo('clientes', 'Clientes', 'users', en_clientes, avisos_clientes) %}
+                {% if current_user.rol in ('admin', 'ventas') %}
+                {{ nav_enlace(url_for('mensajes.lista'), 'Mensajes', 'messages-square', ep.startswith('mensajes.'), mensajes_sin_leer) }}
+                {% endif %}
+                {{ nav_enlace(url_for('contactos.lista'), 'Contactos', 'contact', ep.startswith('contactos.')) }}
+                {{ nav_enlace(url_for('catalogo.lista'), 'Catálogo de Diseños', 'shopping-bag', ep.startswith('catalogo.')) }}
+            {% endcall %}
+
+            {% if current_user.puede_ver_costos or current_user.rol == 'admin' %}
+            {% call nav_grupo('analisis', 'Análisis', 'chart-column', ep.startswith('costos.') or ep.startswith('reportes.')) %}
+                {% if current_user.puede_ver_costos %}
+                {{ nav_enlace(url_for('costos.index'), 'Costos y Márgenes', 'calculator', ep.startswith('costos.')) }}
+                {% endif %}
+                {% if current_user.rol == 'admin' %}
+                {{ nav_enlace(url_for('reportes.index'), 'Reportes', 'chart-column', ep == 'reportes.index') }}
+                {% endif %}
+            {% endcall %}
             {% endif %}
 
             {% if current_user.rol == 'admin' %}
-            <div class="nav-sep">Administración</div>
-            <a href="{{ url_for('admin.usuarios') }}" class="nav-link {% if ep in ['admin.usuarios', 'admin.editar_usuario'] %}active{% endif %}">
-                <i data-lucide="shield-check"></i> Gestión de Usuarios
-                {% if solicitudes_pendientes %}<span class="nav-badge">{{ solicitudes_pendientes }}</span>{% endif %}
-            </a>
-            <a href="{{ url_for('reportes.index') }}" class="nav-link {% if ep in ['reportes.index'] %}active{% endif %}">
-                <i data-lucide="chart-column"></i> Reportes
-            </a>
-            <a href="{{ url_for('admin.bitacora') }}" class="nav-link {% if ep.startswith('admin.bitacora') %}active{% endif %}">
-                <i data-lucide="scroll-text"></i> Bitácora de Auditoría
-            </a>
-            <a href="{{ url_for('whatsapp.simulador') }}" class="nav-link {% if ep.startswith('whatsapp.') %}active{% endif %}">
-                <i data-lucide="message-circle"></i> Bot de WhatsApp
-            </a>
+            {% call nav_grupo('admin', 'Administración', 'shield', ep.startswith('admin.') or ep.startswith('metas.') or (ep.startswith('whatsapp.') and ep != 'whatsapp.guia'), solicitudes_pendientes) %}
+                {{ nav_enlace(url_for('admin.usuarios'), 'Gestión de Usuarios', 'user-cog',
+                          ep in ['admin.usuarios', 'admin.editar_usuario'], solicitudes_pendientes) }}
+                {{ nav_enlace(url_for('metas.equipo'), 'Metas e incentivos', 'target', ep.startswith('metas.')) }}
+                {{ nav_enlace(url_for('admin.bitacora'), 'Bitácora de Auditoría', 'scroll-text', ep.startswith('admin.bitacora')) }}
+                {{ nav_enlace(url_for('whatsapp.simulador'), 'Bot de WhatsApp', 'bot', ep.startswith('whatsapp.') and ep != 'whatsapp.guia') }}
+                {{ nav_enlace(url_for('admin.correo'), 'Correo del sistema', 'mail-check', ep == 'admin.correo') }}
+            {% endcall %}
+            {% endif %}
             {% endif %}
 
-            <div class="nav-sep">Ayuda</div>
-            <a href="{{ url_for('faq.index') }}" class="nav-link {% if ep.startswith('faq.') %}active{% endif %}">
-                <i data-lucide="help-circle"></i> Preguntas Frecuentes
-            </a>
+            {{ nav_enlace(url_for('faq.index'), 'Preguntas Frecuentes', 'help-circle', ep.startswith('faq.')) }}
         </nav>
+
+        <button type="button" id="nav-plegar" class="nav-plegar" title="Comprimir menú" aria-label="Comprimir menú" aria-pressed="false">
+            <i data-lucide="panel-left-close"></i> <span class="nav-plegar__texto">Comprimir menú</span>
+        </button>
 
         <div class="sidebar__user">
             <a href="{{ url_for('auth.perfil') }}" class="avatar avatar--sm" title="Mi perfil">{{ current_user.iniciales }}</a>
@@ -216,6 +227,73 @@
                 if (!d.contains(e.target)) d.removeAttribute('open');
             });
         });
+
+        /* Grupos del menú lateral: recuerda cuáles dejó abiertos el usuario.
+           El grupo que contiene la página actual se queda abierto siempre. */
+        (function () {
+            const grupos = document.querySelectorAll('.nav-grupo');
+            if (!grupos.length) return;
+
+            function leer() {
+                try { return JSON.parse(localStorage.getItem('nav-grupos') || '{}'); } catch (e) { return {}; }
+            }
+            const guardado = leer();
+            grupos.forEach((g) => {
+                if (g.dataset.activo !== '1') g.open = guardado[g.dataset.grupo] === true;
+                g.addEventListener('toggle', () => {
+                    if (g.dataset.activo === '1') return;
+                    const actual = leer();
+                    actual[g.dataset.grupo] = g.open;
+                    try { localStorage.setItem('nav-grupos', JSON.stringify(actual)); } catch (e) {}
+                });
+            });
+        })();
+
+        /* Botón para comprimir el menú a solo íconos (se recuerda en este navegador) */
+        (function () {
+            const boton = document.getElementById('nav-plegar');
+            if (!boton) return;
+            function pintar() {
+                const compacto = root.classList.contains('nav-compacto');
+                boton.setAttribute('aria-pressed', compacto ? 'true' : 'false');
+                boton.title = compacto ? 'Expandir menú' : 'Comprimir menú';
+                boton.setAttribute('aria-label', boton.title);
+                boton.innerHTML = '<i data-lucide="' + (compacto ? 'panel-left-open' : 'panel-left-close') + '"></i>'
+                    + ' <span class="nav-plegar__texto">' + (compacto ? 'Expandir menú' : 'Comprimir menú') + '</span>';
+                lucide.createIcons();
+            }
+            boton.addEventListener('click', () => {
+                root.classList.toggle('nav-compacto');
+                try { localStorage.setItem('nav-compacto', root.classList.contains('nav-compacto') ? '1' : '0'); } catch (e) {}
+                pintar();
+            });
+            pintar();
+        })();
+
+        /* Lo que más usa cada persona sube dentro de su categoría.
+           Se cuentan los clics en el menú (no las recargas) y se guarda en este navegador. */
+        (function () {
+            const CLAVE = 'nav-uso';
+            function leer() {
+                try { return JSON.parse(localStorage.getItem(CLAVE) || '{}'); } catch (e) { return {}; }
+            }
+            function ruta(a) { try { return new URL(a.href).pathname; } catch (e) { return a.getAttribute('href'); } }
+            const uso = leer();
+            document.querySelectorAll('.nav-grupo__lista').forEach((lista) => {
+                const enlaces = Array.from(lista.querySelectorAll(':scope > a.nav-link'));
+                enlaces.map((a, i) => ({ a, i, n: uso[ruta(a)] || 0 }))
+                    .sort((x, y) => (y.n - x.n) || (x.i - y.i))      // empate: orden original
+                    .forEach(({ a }) => lista.appendChild(a));
+            });
+            document.querySelectorAll('.sidebar__nav a.nav-link').forEach((a) => {
+                a.addEventListener('click', () => {
+                    const actual = leer();
+                    const r = ruta(a);
+                    actual[r] = (actual[r] || 0) + 1;
+                    try { localStorage.setItem(CLAVE, JSON.stringify(actual)); } catch (e) {}
+                });
+            });
+        })();
     </script>
     {% if current_user.is_authenticated %}
     {% include "asistente/_widget.html" %}
@@ -223,5 +301,19 @@
     <script>lucide.createIcons();</script>
     {% endif %}
     {% block scripts %}{% endblock %}
+    <script>
+        /* Gráficos de la página (macro grafico): carga Chart.js solo si hace falta. */
+        (function () {
+            if (!document.querySelector('canvas[data-grafico]')) return;
+            function cargar(src, listo) {
+                const s = document.createElement('script');
+                s.src = src; s.onload = listo; s.onerror = listo;
+                document.body.appendChild(s);
+            }
+            const propio = () => cargar("{{ url_for('static', filename='js/graficos-simples.js') }}");
+            if (window.Chart) propio();
+            else cargar('https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js', propio);
+        })();
+    </script>
 </body>
 </html>

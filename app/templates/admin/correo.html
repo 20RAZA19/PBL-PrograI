@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Correo del sistema{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Correo del sistema</h1>
+        <p>Revisa si la app puede enviar correos (recuperación de contraseña) y prueba el envío.</p>
+    </div>
+    {% if estado.configurado %}<span class="badge badge--ok">Configurado</span>{% else %}<span class="badge badge--danger">Sin configurar</span>{% endif %}
+</div>
+
+{% if resultado %}
+<div class="flash {{ 'flash--ok' if resultado.enviado else 'flash--danger' }} correo-resultado" role="status">
+    <i data-lucide="{{ 'mail-check' if resultado.enviado else 'mail-x' }}"></i>
+    <div>
+        {% if resultado.enviado %}
+        <strong>Gmail aceptó el correo de prueba para {{ resultado.destino }}.</strong>
+        Si no aparece en la bandeja en unos minutos, búscalo en spam o promociones.
+        {% else %}
+        <strong>No se pudo enviar.</strong> {{ resultado.motivo }}
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<div class="layout-2">
+    <div>
+        <section class="panel">
+            <div class="panel__head"><div><h2>Configuración actual</h2><p>Valores leídos del archivo <code>.env</code> del servidor</p></div></div>
+            <div class="panel__body">
+                <dl class="ficha" style="border: 0; padding: 0; gap: 0;">
+                    <div class="ficha__fila"><dt>Servidor</dt><dd><code>{{ estado.servidor }}</code></dd></div>
+                    <div class="ficha__fila"><dt>Cuenta que envía (MAIL_USERNAME)</dt><dd>{{ estado.usuario or "— falta —" }}</dd></div>
+                    <div class="ficha__fila"><dt>Contraseña de aplicación (MAIL_PASSWORD)</dt>
+                        <dd>{% if estado.tiene_clave %}Cargada · {{ estado.largo_clave }} caracteres
+                            {% if estado.largo_clave != 16 %}<span class="badge badge--warn" title="Las contraseñas de aplicación de Google tienen 16 letras">Revisa: deberían ser 16</span>{% endif %}
+                            {% else %}— falta —{% endif %}</dd></div>
+                    <div class="ficha__fila"><dt>Nombre del remitente</dt><dd>{{ estado.remitente }}</dd></div>
+                </dl>
+            </div>
+            <form method="post" class="form" novalidate>
+                {{ accion_form.hidden_tag() }}
+                <div class="campo">
+                    <label for="destino">Enviar un correo de prueba a</label>
+                    <input class="input" type="email" id="destino" name="destino" value="{{ destino }}" required maxlength="120">
+                    <small class="ayuda">Usa un correo tuyo. Si falla, aquí verás el motivo exacto que dio Gmail.</small>
+                </div>
+                <div class="form__acciones">
+                    <button type="submit" class="btn btn--primary"><i data-lucide="send"></i> Enviar prueba</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="panel">
+            <div class="panel__head"><div><h2>Últimos intentos de recuperación</h2><p>Por qué se envió o no cada código (el usuario siempre ve el mismo mensaje)</p></div></div>
+            <div class="lista-compacta">
+                {% for r in recientes %}
+                {% set fallo = r.descripcion.startswith('No se') or 'fallida' in r.descripcion %}
+                <div>
+                    <span class="kpi__icon"><i data-lucide="{{ 'mail-x' if fallo else ('mail-check' if 'enviad' in r.descripcion or 'Cambió' in r.descripcion else 'mail') }}"></i></span>
+                    <div class="grow"><strong>{{ r.descripcion }}</strong><small>{{ r.fecha | fecha_es }} · {{ r.fecha | hora }}{% if r.ip %} · IP {{ r.ip }}{% endif %}</small></div>
+                    {% if fallo %}<span class="badge badge--danger">No enviado</span>{% endif %}
+                </div>
+                {% else %}
+                <p class="vacio">Nadie ha pedido recuperar su contraseña todavía.</p>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <aside class="panel">
+        <div class="panel__head"><div><h2>Cómo configurar Gmail</h2><p>Se hace una sola vez</p></div></div>
+        <ol class="wa-pasos">
+            <li>Crea (o usa) una cuenta de Gmail para el sistema, por ejemplo <code>arteycolor.sistema@gmail.com</code>.</li>
+            <li>En esa cuenta entra a <strong>myaccount.google.com → Seguridad</strong> y activa la <strong>Verificación en 2 pasos</strong>. Sin esto Google no deja crear la contraseña de aplicación.</li>
+            <li>Busca <strong>«Contraseñas de aplicaciones»</strong>, crea una llamada «AyC Control» y copia las 16 letras.</li>
+            <li>En PythonAnywhere abre el archivo <code>.env</code> del proyecto y escribe:<br>
+                <code>MAIL_USERNAME=la-cuenta@gmail.com</code><br><code>MAIL_PASSWORD=las16letras</code></li>
+            <li>Guarda y pulsa <strong>Reload</strong> en la pestaña <em>Web</em>. Vuelve aquí y envía una prueba.</li>
+        </ol>
+        <h3 style="margin: 16px 0 8px;">Si la prueba funciona pero a alguien no le llega</h3>
+        <ul class="correo-causas">
+            <li><strong>Cuenta pendiente de aprobación:</strong> el código solo se envía a cuentas aprobadas y activas. Apruébala en Gestión de usuarios.</li>
+            <li><strong>Pidió varios seguidos:</strong> se envía uno por minuto y máximo {{ config.RECUPERACION_MAX_CORREOS_HORA }} por hora.</li>
+            <li><strong>Correo mal escrito</strong> en su perfil, o el correo llegó a spam.</li>
+        </ul>
+        <p class="small muted" style="padding: 0 28px 24px;">En PythonAnywhere gratuito solo se permite <code>smtp.gmail.com</code> por el puerto 587, que es el que usa la app.</p>
+    </aside>
+</div>
+{% endblock %}

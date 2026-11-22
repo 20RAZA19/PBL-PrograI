@@ -10,6 +10,7 @@ from app.documentos import documento_orden_compra, respuesta_documento
 from app.extensions import db
 from app.forms import AccionForm
 from app.models import ESTADOS_ORDEN_COMPRA, Insumo, OrdenCompra, Proveedor
+from app.utils import paginar
 
 compras = Blueprint("compras", __name__)
 
@@ -78,8 +79,9 @@ def ordenes():
     query = OrdenCompra.query
     if estado in ESTADOS_ORDEN_COMPRA:
         query = query.filter_by(estado=estado)
-    lista = query.order_by(OrdenCompra.fecha.desc()).all()
-    return render_template("compras/ordenes.html", ordenes=lista, estado=estado, estados=ESTADOS_ORDEN_COMPRA)
+    pagina = paginar(query.order_by(OrdenCompra.fecha.desc()))
+    return render_template("compras/ordenes.html", ordenes=pagina.items, pagina=pagina, estado=estado,
+                           estados=ESTADOS_ORDEN_COMPRA)
 
 
 @compras.route("/ordenes/<int:orden_id>", methods=["GET", "POST"])

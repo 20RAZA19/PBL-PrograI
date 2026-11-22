@@ -138,3 +138,27 @@ def test_el_cliente_no_ve_su_token_en_el_sitio(entrar, con_token):
     c = entrar("cliente")
     for url in ("/dashboard", "/auth/perfil", "/solicitudes/"):
         assert token not in c.get(url).get_data(as_text=True)
+
+
+# --- Recorrido (tracking) en la consulta con token -----------------------------
+def test_consulta_muestra_el_recorrido_del_pedido(app, con_token):
+    from app.models import EventoRastreo
+    pedido = Pedido.query.filter_by(folio="ORD-T-001").one()
+    gestor = Usuario.query.filter_by(email="gestor@test.com").one()
+    db.session.add(EventoRastreo(pedido=pedido, estado="En Corte", fase=2, ubicacion="Mesa de corte 3",
+                                 latitud=13.70, longitud=-89.20, nota="Tela tendida, corte en curso",
+                                 usuario=gestor))
+    pedido.latitud, pedido.longitud = 13.70, -89.20
+    db.session.commit()
+    _, token = con_token
+    html = _consultar(app, token).get_data(as_text=True)
+    assert "Ver mapa y movimientos" in html
+    assert "Mesa de corte 3" in html and "Tela tendida, corte en curso" in html
+    assert 'class="mini-fases"' in html and 'aria-current="step"' in html
+    assert "leaflet" in html and "rastreos" in html
+    assert gestor.nombre not in html                   # no dice quién del equipo hizo el cambio
+
+
+def test_el_recorrido_no_aparece_sin_token_valido(app, con_token):
+    html = _consultar(app, "AYC-XXXX-XXXX").get_data(as_text=True)
+    assert "Ver recorrido" not in html and "leaflet" not in html

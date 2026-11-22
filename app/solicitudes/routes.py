@@ -21,7 +21,7 @@ from app.notificaciones.servicios import notificar, usuarios_con_rol, usuarios_d
 from app.rastreo.servicios import nuevo_folio_pedido, registrar_evento
 from app.solicitudes.forms import (AprobarForm, DeclinarForm, DenegarForm, SolicitudForm,
                                    leer_etiquetas, leer_lineas, leer_tramos)
-from app.utils import generar_folio
+from app.utils import generar_folio, paginar
 from app.whatsapp.twilio import enviar_whatsapp
 
 
@@ -91,13 +91,47 @@ def lista():
         query = query.filter(Solicitud.estado == estado)
     if q:
         query = query.filter(or_(Solicitud.folio.ilike(f"%{q}%"), Cliente.nombre.ilike(f"%{q}%")))
-    todas = query.order_by(Solicitud.creado_en.desc()).limit(300).all()
+    pagina = paginar(query, por_defecto=10, ordenes={
+        "reciente": ("Más reciente", [Solicitud.creado_en.desc()]),
+        "antigua": ("Más antigua", [Solicitud.creado_en]),
+        "cliente": ("Cliente A→Z", [Cliente.nombre, Solicitud.creado_en.desc()]),
+        "folio": ("Folio", [Solicitud.folio]),
+        "entrega": ("Fecha deseada", [Solicitud.fecha_deseada]),
+    })
+    todas = pagina.items
 
     resumen = None
     if current_user.es_staff:
         resumen = {e: Solicitud.query.filter_by(estado=e).count() for e in ("enviada", "aprobada", "convertida")}
-    return render_template("solicitudes/lista.html", solicitudes=todas, estado=estado, q=q,
+        resumen["semanas"] = _solicitudes_por_semana()
+    return render_template("solicitudes/lista.html", solicitudes=todas, pagina=pagina, estado=estado, q=q,
                            estados=ESTADOS_SOLICITUD, resumen=resumen)
+
+
+def _solicitudes_por_semana(semanas=8):
+    """Solicitudes recibidas y aceptadas por el cliente en cada una de las últimas semanas."""
+    from datetime import date, datetime, timedelta
+    hoy = date.today()
+    lunes = [hoy - timedelta(days=hoy.weekday()) - timedelta(weeks=n) for n in range(semanas - 1, -1, -1)]
+    desde = datetime.combine(lunes[0], datetime.min.time())
+
+    def semana(fecha):
+        return (fecha.date() - lunes[0]).days // 7 if fecha and fecha >= desde else None
+
+    recibidas, aceptadas = [0] * semanas, [0] * semanas
+    for creado, decidida, estado_s in (db.session.query(Solicitud.creado_en, Solicitud.decidida_en, Solicitud.estado)
+                                       .filter(db.or_(Solicitud.creado_en >= desde, Solicitud.decidida_en >= desde))):
+        i = semana(creado)
+        if i is not None:
+            recibidas[i] += 1
+        j = semana(decidida)
+        if estado_s == "convertida" and j is not None:
+            aceptadas[j] += 1
+    meses = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+    return {"tipo": "barras", "unidad": "solicitudes",
+            "etiquetas": [f"{d.day} {meses[d.month - 1]}" for d in lunes],
+            "series": [{"nombre": "Recibidas", "valores": recibidas},
+                       {"nombre": "Aceptadas por el cliente", "valores": aceptadas}]}
 
 
 @solicitudes.route("/nueva", methods=["GET", "POST"])

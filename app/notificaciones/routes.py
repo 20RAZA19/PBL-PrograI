@@ -5,7 +5,7 @@ from app.extensions import db
 from app.forms import AccionForm
 from app.models import Notificacion
 from app.notificaciones.servicios import sincronizar
-from app.utils import destino_seguro
+from app.utils import destino_seguro, paginar
 
 notificaciones = Blueprint("notificaciones", __name__)
 
@@ -25,8 +25,9 @@ def lista():
     query = Notificacion.query.filter_by(usuario_id=current_user.id)
     if filtro == "no-leidas":
         query = query.filter_by(leida=False)
-    avisos = query.order_by(Notificacion.leida, Notificacion.creada_en.desc()).all()
-    return render_template("notificaciones/lista.html", avisos=avisos, filtro=filtro, accion_form=AccionForm())
+    pagina = paginar(query.order_by(Notificacion.leida, Notificacion.creada_en.desc()))
+    return render_template("notificaciones/lista.html", avisos=pagina.items, pagina=pagina, filtro=filtro,
+                           accion_form=AccionForm())
 
 
 @notificaciones.route("/<int:notificacion_id>/ir")

@@ -1,71 +1,117 @@
 {% extends "base.html" %}
-{% from "_macros.html" import badge_entrega %}
+{% from "_macros.html" import badge_entrega, grafico %}
 {% block title %}Reportes Globales{% endblock %}
 
 {% block content %}
+{% set etiqueta_periodo = {7: 'últimos 7 días', 30: 'últimos 30 días', 90: 'últimos 90 días', 365: 'último año'}[dias] %}
 <div class="page-head">
     <div>
         <h1>Reportes Globales</h1>
-        <p>Visión general de la operación de Arte y Color.</p>
+        <p>Operación de Arte y Color en los {{ etiqueta_periodo }} (desde el {{ desde | fecha_es }}).</p>
     </div>
-    <div class="tabs">
+    <div class="tabs" role="tablist" aria-label="Periodo">
         {% for d, etiqueta in [(7, '7 días'), (30, '30 días'), (90, '90 días'), (365, '1 año')] %}
-        <a href="{{ url_for('reportes.index', dias=d) }}" class="{% if dias == d %}active{% endif %}">{{ etiqueta }}</a>
+        <a href="{{ url_for('reportes.index', dias=d) }}" class="{% if dias == d %}active{% endif %}" {% if dias == d %}aria-current="page"{% endif %}>{{ etiqueta }}</a>
         {% endfor %}
     </div>
 </div>
 
+{% macro variacion(v) %}{% if v is not none %}<span class="variacion {{ 'variacion--sube' if v > 0 else ('variacion--baja' if v < 0 else '') }}">{{ '▲' if v > 0 else ('▼' if v < 0 else '=') }} {{ v | abs }} %</span> vs. periodo anterior{% else %}sin datos del periodo anterior{% endif %}{% endmacro %}
+
 <section class="kpis">
     <div class="kpi">
-        <div class="kpi__head">Pedidos Totales <span class="kpi__icon"><i data-lucide="clipboard-list"></i></span></div>
+        <div class="kpi__head">Pedidos recibidos <span class="kpi__icon"><i data-lucide="clipboard-list"></i></span></div>
         <p class="kpi__valor">{{ resumen.pedidos }} <small>órdenes</small></p>
-        <div class="kpi__pie"><span class="badge badge--info">{{ resumen.activos }} activos</span> {{ resumen.unidades }} prendas en total</div>
+        <div class="kpi__pie">{{ variacion(resumen.pedidos_var) }}</div>
     </div>
     <div class="kpi">
-        <div class="kpi__head">Puntualidad de Entrega <span class="kpi__icon"><i data-lucide="calendar-check"></i></span></div>
-        <p class="kpi__valor">{{ (resumen.puntualidad ~ '%') if resumen.puntualidad is not none else '—' }}</p>
-        <div class="kpi__pie"><span class="badge badge--ok">{{ resumen.entregados }} entregados</span> a tiempo o antes</div>
+        <div class="kpi__head">Prendas pedidas <span class="kpi__icon"><i data-lucide="shirt"></i></span></div>
+        <p class="kpi__valor">{{ "{:,}".format(resumen.unidades) }} <small>und.</small></p>
+        <div class="kpi__pie">{{ variacion(resumen.unidades_var) }}</div>
     </div>
     <div class="kpi">
-        <div class="kpi__head">Pedidos Vencidos <span class="kpi__icon"><i data-lucide="alarm-clock"></i></span></div>
+        <div class="kpi__head">Puntualidad de entrega <span class="kpi__icon"><i data-lucide="calendar-check"></i></span></div>
+        <p class="kpi__valor">{{ (resumen.puntualidad ~ ' %') if resumen.puntualidad is not none else '—' }}</p>
+        <div class="kpi__pie"><span class="badge badge--ok">{{ resumen.entregados }} entregados</span> en el periodo</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi__head">Vencidos hoy <span class="kpi__icon"><i data-lucide="alarm-clock"></i></span></div>
         <p class="kpi__valor">{{ resumen.vencidos }} <small>órdenes</small></p>
-        <div class="kpi__pie">{% if resumen.vencidos %}<span class="badge badge--danger">Atención</span>{% else %}<span class="badge badge--ok">Al día</span>{% endif %} Fecha límite superada</div>
-    </div>
-    <div class="kpi">
-        <div class="kpi__head">Movimientos de Inventario <span class="kpi__icon"><i data-lucide="arrow-right-left"></i></span></div>
-        <p class="kpi__valor">{{ resumen.movimientos }} <small>registros</small></p>
-        <div class="kpi__pie"><span class="badge badge--warn">{{ resumen.insumos_alerta }} en alerta</span> últimos {{ dias }} días</div>
+        <div class="kpi__pie">{% if resumen.vencidos %}<span class="badge badge--danger">Atención</span>{% else %}<span class="badge badge--ok">Al día</span>{% endif %} fecha límite superada</div>
     </div>
 </section>
 
 <div class="dash-grid">
-    <section class="panel span-6">
-        <div class="panel__head"><div><h2>Pedidos por Estado</h2><p>Todas las órdenes registradas</p></div></div>
-        <div class="panel__body stock-lista">
-            {% for f in NOMBRES_FASES %}
-            {% set v = por_estado.get(f, 0) %}
-            <div>
-                <div class="stock-fila__head"><span>{{ f }}</span><strong>{{ v }}</strong></div>
-                <div class="pista"><div class="pista__relleno" style="width: {{ (v / max_estado * 100) | round | int }}%;"></div></div>
-            </div>
-            {% endfor %}
+    <section class="panel span-7">
+        <div class="panel__head">
+            <div><h2>Pedidos recibidos y entregados</h2><p>{{ etiqueta_periodo | capitalize }}, {{ tramo }}</p></div>
+        </div>
+        <div class="panel__body"><div class="grafico"><canvas id="grafico-pedidos" role="img" aria-label="Pedidos recibidos y entregados {{ tramo }}"></canvas></div></div>
+    </section>
+    <section class="panel span-5">
+        <div class="panel__head">
+            <div><h2>Pedidos del periodo por estado</h2><p>Dónde están hoy los {{ resumen.pedidos }} pedidos recibidos</p></div>
+        </div>
+        <div class="panel__body">
+            {% if resumen.pedidos %}
+            {{ grafico('grafico-estados', {'tipo': 'barras-h', 'etiquetas': graficos.estados.etiquetas,
+                       'series': [{'nombre': 'Pedidos', 'valores': graficos.estados.valores}], 'unidad': 'pedidos'},
+                       'Pedidos del periodo por estado', 290) }}
+            {% else %}<p class="vacio">No se recibieron pedidos en el periodo.</p>{% endif %}
         </div>
     </section>
+    <section class="panel span-7">
+        <div class="panel__head">
+            <div><h2>Prendas recibidas</h2><p>Unidades de los pedidos que llegaron, {{ tramo }}</p></div>
+        </div>
+        <div class="panel__body"><div class="grafico grafico--bajo"><canvas id="grafico-prendas" role="img" aria-label="Prendas recibidas {{ tramo }}"></canvas></div></div>
+    </section>
+    <section class="panel span-5">
+        <div class="panel__head">
+            <div><h2>¿Llegamos a tiempo?</h2><p>Entregas hechas en el periodo</p></div>
+        </div>
+        <div class="panel__body">
+            {% set pt = graficos.puntualidad %}
+            {% if pt.a_tiempo + pt.tarde %}
+            {{ grafico('grafico-puntualidad', {'tipo': 'dona', 'etiquetas': ['A tiempo', 'Tarde'],
+                       'series': [{'nombre': 'Entregas', 'valores': [pt.a_tiempo, pt.tarde], 'colores': ['ok', 'danger']}],
+                       'unidad': 'entregas'}, 'Entregas a tiempo y tarde', 230) }}
+            {% else %}<p class="vacio">Sin entregas en el periodo.</p>{% endif %}
+        </div>
+    </section>
+    <section class="panel span-12">
+        <div class="panel__head">
+            <div><h2>Consumo de telas</h2><p>Metros que salieron de bodega, {{ tramo }} · las 4 telas más usadas</p></div>
+        </div>
+        <div class="panel__body"><div class="grafico grafico--bajo"><canvas id="grafico-consumo" role="img" aria-label="Consumo de telas {{ tramo }}"></canvas></div></div>
+    </section>
+    {% if graficos.finanzas %}
+    <section class="panel span-12">
+        <div class="panel__head">
+            <div><h2>Ventas y ganancia estimada</h2><p>Valor de los pedidos recibidos y su ganancia según la ficha de costos, {{ tramo }}</p></div>
+            <a href="{{ url_for('costos.index') }}" class="btn btn--outline btn--sm"><i data-lucide="calculator"></i> Ver márgenes</a>
+        </div>
+        <div class="panel__body"><div class="grafico grafico--bajo"><canvas id="grafico-finanzas" role="img" aria-label="Ventas y ganancia {{ tramo }}"></canvas></div></div>
+    </section>
+    {% endif %}
+</div>
+<script type="application/json" id="datos-graficos">{{ graficos | tojson }}</script>
 
+<div class="dash-grid">
     <section class="panel span-6">
-        <div class="panel__head"><div><h2>Clientes con Más Prendas</h2><p>Unidades pedidas acumuladas</p></div></div>
+        <div class="panel__head"><div><h2>Clientes con más prendas</h2><p>Unidades pedidas en el periodo</p></div></div>
         <div class="panel__body stock-lista">
             {% for nombre, unidades in top_clientes %}
             <div>
-                <div class="stock-fila__head"><span>{{ nombre }}</span><strong>{{ unidades }} und.</strong></div>
-                <div class="pista"><div class="pista__relleno" style="width: {{ (unidades / max_cliente * 100) | round | int }}%; background: var(--c-asparagus);"></div></div>
+                <div class="stock-fila__head"><span>{{ nombre }}</span><strong>{{ "{:,}".format(unidades) }} und.</strong></div>
+                <div class="pista"><div class="pista__relleno" style="width: {{ (unidades / max_cliente * 100) | round | int }}%;"></div></div>
             </div>
-            {% else %}<p class="vacio">Sin pedidos.</p>{% endfor %}
+            {% else %}<p class="vacio">Sin pedidos en el periodo.</p>{% endfor %}
         </div>
     </section>
 
     <section class="panel span-6">
-        <div class="panel__head"><div><h2>Insumos Más Consumidos</h2><p>Salidas de los últimos {{ dias }} días</p></div></div>
+        <div class="panel__head"><div><h2>Insumos más consumidos</h2><p>Salidas de los {{ etiqueta_periodo }}</p></div></div>
         <div class="panel__body stock-lista">
             {% for insumo, cantidad in top_consumo %}
             <div>
@@ -80,33 +126,32 @@
     </section>
 
     <section class="panel span-6">
-        <div class="panel__head"><div><h2>Actividad del Equipo</h2><p>Movimientos y actualizaciones de rastreo · {{ dias }} días</p></div></div>
+        <div class="panel__head"><div><h2>Actividad del equipo</h2><p>Movimientos y actualizaciones de rastreo · {{ etiqueta_periodo }}</p></div></div>
+        <div class="panel__body">
+            {% if actividad %}
+            {{ grafico('grafico-actividad', {'tipo': 'barras-h', 'etiquetas': actividad | map(attribute=0) | list,
+                       'series': [{'nombre': 'Acciones', 'valores': actividad | map(attribute=1) | list}], 'unidad': 'acciones'},
+                       'Acciones por persona', 40 + 36 * (actividad | length)) }}
+            {% else %}<p class="vacio">Sin actividad registrada.</p>{% endif %}
+        </div>
+    </section>
+
+    <section class="panel span-6">
+        <div class="panel__head">
+            <div><h2>Pedidos vencidos hoy</h2><p>Superaron su fecha límite sin entregarse</p></div>
+            {% if total_vencidos > vencidos | length %}<a class="panel__mas" href="{{ url_for('main.kanban_pedidos', plazo='vencido') }}">Ver los {{ total_vencidos }}</a>{% endif %}
+        </div>
         <div class="lista-compacta">
-            {% for nombre, n in actividad %}
-            <div>
-                <span class="avatar avatar--sm">{{ nombre | iniciales }}</span>
-                <div class="grow"><strong>{{ nombre }}</strong></div>
-                <span class="badge badge--neutral">{{ n }} acciones</span>
-            </div>
-            {% else %}<p class="vacio">Sin actividad registrada.</p>{% endfor %}
+            {% for p in vencidos %}
+            <a href="{{ url_for('rastreo.detalle', folio=p.folio) }}">
+                <span class="kpi__icon"><i data-lucide="alarm-clock"></i></span>
+                <div class="grow"><strong>{{ p.folio }} · {{ p.modelo_prenda }}</strong><small>{{ p.cliente.nombre }} · {{ p.estado }}</small></div>
+                {{ badge_entrega(p) }}
+            </a>
+            {% else %}<p class="vacio">Ningún pedido vencido. ¡Bien!</p>{% endfor %}
         </div>
     </section>
 </div>
-
-{% if vencidos %}
-<section class="panel">
-    <div class="panel__head"><div><h2>Pedidos Vencidos</h2><p>Superaron su fecha límite sin entregarse</p></div></div>
-    <div class="lista-compacta">
-        {% for p in vencidos %}
-        <a href="{{ url_for('rastreo.detalle', folio=p.folio) }}">
-            <span class="kpi__icon"><i data-lucide="alarm-clock"></i></span>
-            <div class="grow"><strong>{{ p.folio }} · {{ p.modelo_prenda }}</strong><small>{{ p.cliente.nombre }} · {{ p.estado }}</small></div>
-            {{ badge_entrega(p) }}
-        </a>
-        {% endfor %}
-    </div>
-</section>
-{% endif %}
 
 <section class="panel">
     <div class="panel__head">
@@ -119,4 +164,9 @@
         <a class="btn btn--outline" href="{{ url_for('reportes.exportar', tipo='contactos') }}"><i data-lucide="file-spreadsheet"></i> Contactos</a>
     </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/graficos.js') }}"></script>
 {% endblock %}
